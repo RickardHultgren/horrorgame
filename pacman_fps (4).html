@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>PAC-MAN 3D — First Person Maze</title>
+<style>
+  :root{
+    --yellow:#ffe135;
+    --blue:#2a4bd7;
+    --cyan:#3bf0ff;
+  }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:#000; overflow:hidden;
+    font-family:'Segoe UI', Arial, sans-serif;
+    user-select:none;
+  }
+  #stage{
+    position:relative; width:100vw; height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    background:#000;
+  }
+  #game{
+    display:block; width:100%; height:100%;
+    image-rendering:auto;
+    cursor:crosshair;
+  }
+  #vignette{
+    position:absolute; inset:0; pointer-events:none;
+    box-shadow: inset 0 0 18vw 4vw rgba(0,0,0,0.75);
+  }
+  #hud{
+    position:absolute; top:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:flex-start;
+    padding:14px 18px; box-sizing:border-box; pointer-events:none;
+    color:var(--yellow); text-shadow:0 0 6px rgba(255,225,53,0.6), 0 2px 2px #000;
+    font-weight:700; letter-spacing:2px;
+  }
+  #hud .block{ background:rgba(0,0,10,0.35); border:1px solid rgba(255,225,53,0.35); border-radius:8px; padding:8px 14px; }
+  #score{ font-size:22px; }
+  #livesRow{ display:flex; gap:6px; margin-top:6px; }
+  .life{ width:16px; height:16px; border-radius:50%; background:var(--yellow);
+    clip-path:polygon(100% 50%, 45% 15%, 45% 85%); box-shadow:0 0 4px rgba(255,225,53,0.8);}
+  #frenzyWrap{ width:140px; }
+  #frenzyBar{ height:8px; background:#0af; border-radius:4px; width:0%; transition:width .1s linear; box-shadow:0 0 8px #0af;}
+  #frenzyLabel{ font-size:11px; opacity:0.85; margin-bottom:4px; }
+  #pelletsLeft{ font-size:12px; margin-top:6px; opacity:0.85; color:#9fd; }
+  #minimap{
+    position:absolute; bottom:16px; right:16px;
+    border:2px solid rgba(255,225,53,0.6); border-radius:6px;
+    box-shadow:0 0 14px rgba(0,0,0,0.8);
+    image-rendering:pixelated;
+  }
+  #crosshair{
+    position:absolute; top:50%; left:50%; width:6px; height:6px;
+    margin:-3px 0 0 -3px; border-radius:50%;
+    background:rgba(255,225,53,0.85); pointer-events:none;
+    box-shadow:0 0 6px rgba(255,225,53,0.9);
+  }
+  .overlay{
+    position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; background:rgba(0,0,10,0.88);
+    color:#fff; text-align:center; z-index:20; gap:14px; padding:20px; box-sizing:border-box;
+  }
+  .overlay h1{
+    color:var(--yellow); font-size:clamp(28px,6vw,54px); margin:0; letter-spacing:6px;
+    text-shadow:0 0 20px rgba(255,225,53,0.7);
+  }
+  .overlay h2{ color:#fff; margin:0 0 6px 0; letter-spacing:3px; }
+  .overlay p{ max-width:560px; line-height:1.6; opacity:0.9; margin:2px 0; font-size:14px;}
+  .overlay .kbd{ background:#222; border:1px solid #555; border-radius:4px; padding:1px 7px; font-family:monospace; }
+  .btn{
+    margin-top:10px; background:var(--yellow); color:#111; border:none; border-radius:6px;
+    padding:14px 30px; font-size:16px; font-weight:800; letter-spacing:2px; cursor:pointer;
+    box-shadow:0 0 20px rgba(255,225,53,0.5);
+  }
+  .btn:hover{ background:#fff08a; }
+  #ghostLegend{ display:flex; gap:16px; flex-wrap:wrap; justify-content:center; margin-top:6px;}
+  #ghostLegend div{ display:flex; align-items:center; gap:6px; font-size:12px; }
+  .swatch{ width:12px; height:12px; border-radius:50% 50% 40% 40%; display:inline-block;}
+  #hidden{ display:none; }
+
+  /* ---- on/off switch for touch controls ---- */
+  #touchToggleWrap{
+    position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+    z-index:30; display:flex; align-items:center; gap:8px;
+    background:rgba(0,0,10,0.5); border:1px solid rgba(255,225,53,0.35);
+    border-radius:20px; padding:6px 14px; pointer-events:auto;
+  }
+  #touchToggleLabel{ color:#ffe135; font-size:12px; letter-spacing:1px; font-weight:700; }
+  .switch{ position:relative; display:inline-block; width:40px; height:22px; flex:none; }
+  .switch input{ opacity:0; width:0; height:0; }
+  .switch .slider{
+    position:absolute; cursor:pointer; inset:0;
+    background:#3a3a3a; border-radius:22px; transition:.15s;
+    border:1px solid rgba(255,255,255,0.2);
+  }
+  .switch .slider::before{
+    content:""; position:absolute; width:16px; height:16px; left:2px; top:2px;
+    background:#ddd; border-radius:50%; transition:.15s;
+  }
+  .switch input:checked + .slider{ background:#2a8f3f; }
+  .switch input:checked + .slider::before{ transform:translateX(18px); background:#fff; }
+
+  /* ---- on-screen mobile controls ---- */
+  #touchControlsUI{ position:absolute; inset:0; z-index:15; pointer-events:none; display:none; }
+  #joystickBase{
+    position:absolute; left:26px; bottom:70px; width:120px; height:120px;
+    border-radius:50%; background:rgba(255,255,255,0.07);
+    border:2px solid rgba(255,225,53,0.45); pointer-events:auto;
+    touch-action:none;
+  }
+  #joystickKnob{
+    position:absolute; left:50%; top:50%; width:54px; height:54px;
+    margin:-27px 0 0 -27px; border-radius:50%;
+    background:rgba(255,225,53,0.55); border:2px solid rgba(255,225,53,0.9);
+    pointer-events:none;
+  }
+  #btnPause, #btnMapToggle{
+    position:absolute; top:16px; width:44px; height:44px; border-radius:50%;
+    background:rgba(0,0,10,0.5); border:1px solid rgba(255,225,53,0.4);
+    color:#ffe135; font-size:18px; display:flex; align-items:center; justify-content:center;
+    pointer-events:auto; touch-action:none;
+  }
+  #btnPause{ right:16px; }
+  #btnMapToggle{ right:68px; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="game"></canvas>
+  <canvas id="minimap" width="150" height="122"></canvas>
+  <div id="vignette"></div>
+  <div id="crosshair"></div>
+
+  <div id="hud">
+    <div class="block">
+      <div id="score">SCORE 0</div>
+      <div id="livesRow"></div>
+      <div id="pelletsLeft">PELLETS: 0</div>
+    </div>
+    <div class="block" id="frenzyWrap" style="display:none;">
+      <div id="frenzyLabel">FRENZY!</div>
+      <div style="background:#123;border-radius:4px;"><div id="frenzyBar"></div></div>
+    </div>
+  </div>
+
+  <div id="touchToggleWrap">
+    <label class="switch">
+      <input type="checkbox" id="touchToggle">
+      <span class="slider"></span>
+    </label>
+    <span id="touchToggleLabel">Screen Controls</span>
+  </div>
+
+  <div id="touchControlsUI">
+    <div id="joystickBase"><div id="joystickKnob"></div></div>
+    <div id="btnPause" title="Pause">⏸</div>
+    <div id="btnMapToggle" title="Toggle Map">🗺</div>
+  </div>
+
+  <div class="overlay" id="startScreen">
+    <h1>PAC-MAN 3D</h1>
+    <p>You <em>are</em> Pac-Man now. Explore the maze in first person, gobble every pellet,
+       and don't let the ghosts catch you — unless you've just eaten a power pellet.</p>
+    <p>
+      <span class="kbd">W A S D</span> or <span class="kbd">Arrows</span> move &nbsp;·&nbsp;
+      Mouse look (click to lock) &nbsp;·&nbsp; <span class="kbd">M</span> toggle map &nbsp;·&nbsp;
+      <span class="kbd">Esc</span> pause
+    </p>
+    <p>On mobile: use the joystick to move, drag anywhere to look around.
+       Toggle on-screen controls anytime with the switch in the corner.</p>
+    <div id="ghostLegend">
+      <div><span class="swatch" style="background:#ff3b3b;"></span>Blinky — hunts you directly</div>
+      <div><span class="swatch" style="background:#ff9bd6;"></span>Pinky — ambushes ahead of you</div>
+      <div><span class="swatch" style="background:#3bf0ff;"></span>Inky — unpredictable</div>
+      <div><span class="swatch" style="background:#ffa63b;"></span>Clyde — shy up close</div>
+    </div>
+    <button class="btn" id="startBtn">CLICK TO START</button>
+  </div>
+
+  <div class="overlay" id="pauseScreen" style="display:none;">
+    <h2>PAUSED</h2>
+    <p>Click below to grab your mouse cursor back and keep hunting pellets.</p>
+    <button class="btn" id="resumeBtn">RESUME</button>
+  </div>
+
+  <div class="overlay" id="endScreen" style="display:none;">
+    <h2 id="endTitle">GAME OVER</h2>
+    <p id="endScore">Score: 0</p>
+    <button class="btn" id="restartBtn">PLAY AGAIN</button>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* ===================== CONFIG ===================== */
+const FOV = 66 * Math.PI/180;
+const MOVE_SPEED = 3.2;
+const ROT_SPEED = 2.6;
+const MOUSE_SENS = 0.0022;
+const GHOST_SPEED = 2.05;
+const FRIGHT_FACTOR = 0.6;
+const EATEN_FACTOR = 1.9;
+const PLAYER_RADIUS = 0.22;
+const EAT_PELLET_R = 0.4;
+const EAT_GHOST_R = 0.55;
+const FRENZY_DURATION = 8.0;
+const INVULN_DURATION = 2.0;
+const MAX_LIVES = 3;
+
+/* ===================== STATE ===================== */
+let maze, GW, GH;
+let pellets = [];
+let pelletsTotal = 0, pelletsRemaining = 0;
+let ghosts = [];
+let player = { x:1.5, y:1.5, angle:0 };
+let score = 0, lives = MAX_LIVES;
+let frenzyTimer = 0, invulnTimer = 0;
+let gameState = 'start'; // start | playing | paused | gameover | win
+let keys = {};
+let pointerLocked = false;
+let minimapVisible = true;
+let lastTime = 0;
+let zbuffer = [];
+let audioCtx = null;
+let homeCell = [1,1];
+
+/* ===================== DOM ===================== */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const minimapCanvas = document.getElementById('minimap');
+const mctx = minimapCanvas.getContext('2d');
+const startScreen = document.getElementById('startScreen');
+const pauseScreen = document.getElementById('pauseScreen');
+const endScreen = document.getElementById('endScreen');
+const scoreEl = document.getElementById('score');
+const livesRow = document.getElementById('livesRow');
+const pelletsLeftEl = document.getElementById('pelletsLeft');
+const frenzyWrap = document.getElementById('frenzyWrap');
+const frenzyBar = document.getElementById('frenzyBar');
+const endTitle = document.getElementById('endTitle');
+const endScoreEl = document.getElementById('endScore');
+
+/* ===================== UTIL ===================== */
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+
+/* ===================== AUDIO ===================== */
+function ensureAudio(){
+  if(!audioCtx){
+    try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ audioCtx=null; }
+  } else if(audioCtx.state==='suspended'){ audioCtx.resume(); }
+}
+function beep(freq, dur, type, vol, glideTo){
+  if(!audioCtx) return;
+  const t0 = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type||'square';
+  osc.frequency.setValueAtTime(freq, t0);
+  if(glideTo) osc.frequency.linearRampToValueAtTime(glideTo, t0+dur);
+  gain.gain.setValueAtTime((vol!==undefined?vol:0.15), t0);
+  gain.gain.exponentialRampToValueAtTime(0.001, t0+dur);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(t0); osc.stop(t0+dur);
+}
+function sfxPellet(){ beep(520,0.06,'square',0.10); }
+function sfxPower(){ beep(220,0.25,'sawtooth',0.14,440); }
+function sfxEatGhost(){ beep(300,0.18,'square',0.16,900); }
+function sfxDeath(){ beep(400,0.6,'sawtooth',0.18,60); }
+function sfxWin(){ beep(523,0.12,'square',0.15); setTimeout(()=>beep(659,0.12,'square',0.15),120); setTimeout(()=>beep(784,0.2,'square',0.15),240); }
+
+/* ===================== THE LEVEL (fixed grid, defined as JSON) ===================== */
+/* 0 = floor, 1 = wall. Each string in "grid" is one row; each character one cell. */
+const LEVEL_JSON = `{
+  "width": 21,
+  "height": 17,
+  "grid": [
+    "111111111111111111111",
+    "100000000000000000001",
+    "101111101110111110101",
+    "101000100000001000101",
+    "101011111011111010101",
+    "100010000010000010001",
+    "111010111010111010111",
+    "100010001010001010001",
+    "111010101010101010111",
+    "100000100010001000001",
+    "101111101010101111101",
+    "100000000010000000001",
+    "101110111010111011101",
+    "100010100000001010001",
+    "111010101110101010111",
+    "100000000000000000001",
+    "111111111111111111111"
+  ]
+}`;
+
+function loadLevel(){
+  const data = JSON.parse(LEVEL_JSON);
+  const grid = data.grid.map(row => row.split('').map(ch => ch === '1' ? 1 : 0));
+  return grid;
+}
+
+function findNearestFloor(tx,ty){
+  tx = clamp(tx,0,GW-1); ty = clamp(ty,0,GH-1);
+  if(maze[ty] && maze[ty][tx]===0) return [tx,ty];
+  const maxR = Math.max(GW,GH);
+  for(let r=1;r<maxR;r++){
+    for(let dy=-r;dy<=r;dy++){
+      for(let dx=-r;dx<=r;dx++){
+        if(Math.max(Math.abs(dx),Math.abs(dy))!==r) continue;
+        const nx=tx+dx, ny=ty+dy;
+        if(ny>=0 && ny<GH && nx>=0 && nx<GW && maze[ny][nx]===0) return [nx,ny];
+      }
+    }
+  }
+  return [1,1];
+}
+
+function getOpenNeighbors(cx,cy){
+  const res = [];
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+  for(const [dx,dy] of dirs){
+    const nx=cx+dx, ny=cy+dy;
+    if(ny>=0 && ny<GH && nx>=0 && nx<GW && maze[ny][nx]===0) res.push([nx,ny]);
+  }
+  return res;
+}
+
+function bfsPath(startX,startY,goalX,goalY){
+  if(startX===goalX && startY===goalY) return [[startX,startY]];
+  const visited = [];
+  for(let y=0;y<GH;y++) visited.push(new Array(GW).fill(false));
+  const prev = [];
+  for(let y=0;y<GH;y++) prev.push(new Array(GW).fill(null));
+  const queue = [[startX,startY]];
+  let qi = 0;
+  visited[startY][startX] = true;
+  let found = false;
+  while(qi < queue.length){
+    const cur = queue[qi++];
+    const cx=cur[0], cy=cur[1];
+    if(cx===goalX && cy===goalY){ found = true; break; }
+    const neighbors = getOpenNeighbors(cx,cy);
+    for(const n of neighbors){
+      if(!visited[n[1]][n[0]]){
+        visited[n[1]][n[0]] = true;
+        prev[n[1]][n[0]] = [cx,cy];
+        queue.push(n);
+      }
+    }
+  }
+  if(!found) return null;
+  const path = [[goalX,goalY]];
+  let cur = [goalX,goalY];
+  while(!(cur[0]===startX && cur[1]===startY)){
+    cur = prev[cur[1]][cur[0]];
+    path.push(cur);
+  }
+  path.reverse();
+  return path;
+}
+
+function initialAngle(cx,cy){
+  const opts = [[1,0,0],[0,1,Math.PI/2],[-1,0,Math.PI],[0,-1,-Math.PI/2]];
+  for(const [dx,dy,ang] of opts){
+    const nx=cx+dx, ny=cy+dy;
+    if(maze[ny] && maze[ny][nx]===0) return ang;
+  }
+  return 0;
+}
+
+/* ===================== TEXTURES (sprites) ===================== */
+let texPellet, texPowerPellet, ghostTexNormal = {}, texScared, texScaredFlash, texEaten;
+
+function makeCanvas(size){ const c=document.createElement('canvas'); c.width=size; c.height=size; return c; }
+
+function buildPelletTextures(){
+  texPellet = makeCanvas(16);
+  let tc = texPellet.getContext('2d');
+  tc.beginPath(); tc.arc(8,8,4.2,0,Math.PI*2); tc.fillStyle='#ffe9a8'; tc.fill();
+
+  texPowerPellet = makeCanvas(24);
+  tc = texPowerPellet.getContext('2d');
+  const grad = tc.createRadialGradient(12,12,2,12,12,11);
+  grad.addColorStop(0,'#fff7d6'); grad.addColorStop(1,'#ffcf3a');
+  tc.beginPath(); tc.arc(12,12,10,0,Math.PI*2); tc.fillStyle=grad; tc.fill();
+}
+
+function drawGhostBody(tc, size, bodyColor){
+  tc.clearRect(0,0,size,size);
+  tc.fillStyle = bodyColor;
+  tc.beginPath();
+  tc.moveTo(size*0.1, size*0.92);
+  tc.lineTo(size*0.1, size*0.46);
+  tc.arc(size*0.5, size*0.46, size*0.4, Math.PI, 0, false);
+  tc.lineTo(size*0.9, size*0.92);
+  const bumps = 4;
+  const segW = (size*0.8)/bumps;
+  for(let i=0;i<bumps;i++){
+    const x1 = size*0.9 - segW*i;
+    const xMid = x1 - segW/2;
+    const x2 = x1 - segW;
+    const yTop = size*0.92, yDip = size*0.74;
+    tc.quadraticCurveTo(xMid, (i%2===0)?yDip:yTop, x2, yTop);
+  }
+  tc.closePath();
+  tc.fill();
+}
+
+function drawGhostEyes(tc, size, scared){
+  tc.fillStyle = '#fff';
+  tc.beginPath(); tc.ellipse(size*0.36,size*0.44,size*0.1,size*0.13,0,0,Math.PI*2); tc.fill();
+  tc.beginPath(); tc.ellipse(size*0.64,size*0.44,size*0.1,size*0.13,0,0,Math.PI*2); tc.fill();
+  tc.fillStyle = scared ? '#2a4bd7' : '#1a3fa0';
+  tc.beginPath(); tc.arc(size*0.38,size*0.46,size*0.045,0,Math.PI*2); tc.fill();
+  tc.beginPath(); tc.arc(size*0.66,size*0.46,size*0.045,0,Math.PI*2); tc.fill();
+}
+
+function buildGhostTextures(){
+  const colors = { chase:'#ff3b3b', ambush:'#ff9bd6', random:'#3bf0ff', shy:'#ffa63b' };
+  const size = 64;
+  for(const key in colors){
+    const c = makeCanvas(size);
+    const tc = c.getContext('2d');
+    drawGhostBody(tc, size, colors[key]);
+    drawGhostEyes(tc, size, false);
+    ghostTexNormal[key] = c;
+  }
+  const cScared = makeCanvas(size);
+  let tc = cScared.getContext('2d');
+  drawGhostBody(tc, size, '#2a4bd7');
+  tc.strokeStyle = '#fff'; tc.lineWidth = size*0.05; tc.lineCap='round';
+  tc.beginPath(); tc.moveTo(size*0.32,size*0.62);
+  tc.lineTo(size*0.42,size*0.72); tc.lineTo(size*0.5,size*0.62);
+  tc.lineTo(size*0.58,size*0.72); tc.lineTo(size*0.68,size*0.62);
+  tc.stroke();
+  drawGhostEyes(tc, size, true);
+  texScared = cScared;
+
+  const cFlash = makeCanvas(size);
+  tc = cFlash.getContext('2d');
+  drawGhostBody(tc, size, '#ffffff');
+  tc.strokeStyle = '#ff5f5f'; tc.lineWidth = size*0.05; tc.lineCap='round';
+  tc.beginPath(); tc.moveTo(size*0.32,size*0.62);
+  tc.lineTo(size*0.42,size*0.72); tc.lineTo(size*0.5,size*0.62);
+  tc.lineTo(size*0.58,size*0.72); tc.lineTo(size*0.68,size*0.62);
+  tc.stroke();
+  drawGhostEyes(tc, size, true);
+  texScaredFlash = cFlash;
+
+  const cEyes = makeCanvas(size);
+  tc = cEyes.getContext('2d');
+  drawGhostEyes(tc, size, false);
+  texEaten = cEyes;
+}
+
+function ghostTexture(g){
+  if(g.state==='eaten') return texEaten;
+  if(g.state==='frightened'){
+    if(frenzyTimer < 2.2 && Math.floor(frenzyTimer*6)%2===0) return texScaredFlash;
+    return texScared;
+  }
+  return ghostTexNormal[g.type];
+}
+
+/* ===================== GAME SETUP ===================== */
+function newGame(){
+  maze = loadLevel();
+  GH = maze.length; GW = maze[0].length;
+
+  const start = findNearestFloor(1,1);
+  player.x = start[0]+0.5; player.y = start[1]+0.5;
+  player.angle = initialAngle(start[0], start[1]);
+
+  homeCell = findNearestFloor(GW-2, GH-2);
+
+  // power pellet corner targets
+  const corners = [
+    findNearestFloor(1,1),
+    findNearestFloor(GW-2,1),
+    findNearestFloor(1,GH-2),
+    findNearestFloor(GW-2,GH-2)
+  ];
+  const powerSet = new Set(corners.map(c=>c[0]+','+c[1]));
+  powerSet.delete(start[0]+','+start[1]);
+
+  pellets = [];
+  for(let y=0;y<GH;y++){
+    for(let x=0;x<GW;x++){
+      if(maze[y][x]!==0) continue;
+      if(x===start[0] && y===start[1]) continue;
+      const key = x+','+y;
+      pellets.push({ x:x+0.5, y:y+0.5, power: powerSet.has(key), eaten:false });
+    }
+  }
+  pelletsTotal = pellets.length;
+  pelletsRemaining = pelletsTotal;
+
+  const types = ['chase','ambush','random','shy'];
+  ghosts = types.map((type,i)=>{
+    return {
+      type, color:type,
+      x: homeCell[0]+0.5 + (i%2===0?0.15:-0.15),
+      y: homeCell[1]+0.5 + (i<2?0.15:-0.15),
+      state:'chase',
+      targetCell:[homeCell[0],homeCell[1]],
+      prevCell:[homeCell[0],homeCell[1]],
+      releaseDelay: i*1.4
+    };
+  });
+
+  score = 0; lives = MAX_LIVES;
+  frenzyTimer = 0; invulnTimer = INVULN_DURATION;
+  updateHUD();
+}
+
+/* ===================== INPUT ===================== */
+window.addEventListener('keydown', (e)=>{
+  keys[e.code] = true;
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
+  if(e.code==='KeyM') minimapVisible = !minimapVisible;
+});
+window.addEventListener('keyup', (e)=>{ keys[e.code]=false; });
+
+function tryLockPointer(){
+  if(!touchControlsEnabled && canvas.requestPointerLock) canvas.requestPointerLock();
+}
+
+canvas.addEventListener('click', ()=>{
+  if(gameState==='playing') tryLockPointer();
+});
+
+document.addEventListener('pointerlockchange', ()=>{
+  pointerLocked = (document.pointerLockElement === canvas);
+  if(!pointerLocked && gameState==='playing' && !touchControlsEnabled){
+    gameState = 'paused';
+    pauseScreen.style.display = 'flex';
+  }
+});
+
+document.addEventListener('mousemove', (e)=>{
+  if(pointerLocked && gameState==='playing'){
+    player.angle += e.movementX * MOUSE_SENS;
+  }
+});
+
+/* ---------- on-screen mobile controls: joystick (move) + drag-to-look ---------- */
+const isTouchCapable = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+let touchControlsEnabled = false;
+try{
+  const saved = localStorage.getItem('pac3d_touchControls');
+  touchControlsEnabled = saved !== null ? saved === '1' : isTouchCapable;
+}catch(e){ touchControlsEnabled = isTouchCapable; }
+
+const touchControlsUI = document.getElementById('touchControlsUI');
+const joystickBase = document.getElementById('joystickBase');
+const joystickKnob = document.getElementById('joystickKnob');
+const touchToggle = document.getElementById('touchToggle');
+const btnPause = document.getElementById('btnPause');
+const btnMapToggle = document.getElementById('btnMapToggle');
+
+function applyTouchControlsVisibility(){
+  touchControlsUI.style.display = touchControlsEnabled ? 'block' : 'none';
+  touchToggle.checked = touchControlsEnabled;
+}
+touchToggle.addEventListener('change', ()=>{
+  touchControlsEnabled = touchToggle.checked;
+  try{ localStorage.setItem('pac3d_touchControls', touchControlsEnabled?'1':'0'); }catch(e){}
+  applyTouchControlsVisibility();
+});
+applyTouchControlsVisibility();
+
+const joystick = { active:false, id:null, baseX:0, baseY:0, maxR:50, vecX:0, vecY:0 };
+const lookTouch = { active:false, id:null, lastX:0, lastY:0 };
+
+function joystickStart(t){
+  const rect = joystickBase.getBoundingClientRect();
+  joystick.active = true;
+  joystick.id = t.identifier;
+  joystick.baseX = rect.left + rect.width/2;
+  joystick.baseY = rect.top + rect.height/2;
+  joystickUpdate(t);
+}
+function joystickUpdate(t){
+  let dx = t.clientX - joystick.baseX;
+  let dy = t.clientY - joystick.baseY;
+  const dist = Math.hypot(dx,dy);
+  if(dist > joystick.maxR){ dx = dx/dist*joystick.maxR; dy = dy/dist*joystick.maxR; }
+  joystick.vecX = dx / joystick.maxR;
+  joystick.vecY = dy / joystick.maxR;
+  joystickKnob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+}
+function joystickEnd(){
+  joystick.active = false; joystick.id = null;
+  joystick.vecX = 0; joystick.vecY = 0;
+  joystickKnob.style.transform = 'translate(0px,0px)';
+}
+
+joystickBase.addEventListener('touchstart', (e)=>{
+  if(joystick.active) return;
+  joystickStart(e.changedTouches[0]);
+  e.preventDefault();
+}, {passive:false});
+
+function lookUpdate(t){
+  const dx = t.clientX - lookTouch.lastX;
+  player.angle += dx * 0.0045;
+  lookTouch.lastX = t.clientX; lookTouch.lastY = t.clientY;
+}
+canvas.addEventListener('touchstart', (e)=>{
+  if(gameState !== 'playing') return;
+  if(lookTouch.active) return;
+  const t = e.changedTouches[0];
+  lookTouch.active = true;
+  lookTouch.id = t.identifier;
+  lookTouch.lastX = t.clientX; lookTouch.lastY = t.clientY;
+}, {passive:true});
+
+document.addEventListener('touchmove', (e)=>{
+  for(const t of e.changedTouches){
+    if(joystick.active && t.identifier === joystick.id) joystickUpdate(t);
+    if(lookTouch.active && t.identifier === lookTouch.id) lookUpdate(t);
+  }
+}, {passive:true});
+function releaseTouch(e){
+  for(const t of e.changedTouches){
+    if(joystick.active && t.identifier === joystick.id) joystickEnd();
+    if(lookTouch.active && t.identifier === lookTouch.id){ lookTouch.active=false; lookTouch.id=null; }
+  }
+}
+document.addEventListener('touchend', releaseTouch, {passive:true});
+document.addEventListener('touchcancel', releaseTouch, {passive:true});
+
+/* ---- mouse equivalents, so the on-screen joystick/look also work with a mouse
+   (desktop testing, hybrid touch+mouse devices, trackpads, etc.) ---- */
+joystickBase.addEventListener('mousedown', (e)=>{
+  if(joystick.active) return;
+  joystick.active = true;
+  joystick.id = 'mouse';
+  const rect = joystickBase.getBoundingClientRect();
+  joystick.baseX = rect.left + rect.width/2;
+  joystick.baseY = rect.top + rect.height/2;
+  joystickUpdate(e);
+  e.preventDefault();
+});
+canvas.addEventListener('mousedown', (e)=>{
+  if(!touchControlsEnabled) return; // pointer-lock mouse look already covers the non-touch mode
+  if(gameState !== 'playing') return;
+  if(lookTouch.active) return;
+  lookTouch.active = true;
+  lookTouch.id = 'mouse';
+  lookTouch.lastX = e.clientX; lookTouch.lastY = e.clientY;
+});
+document.addEventListener('mousemove', (e)=>{
+  if(joystick.active && joystick.id==='mouse') joystickUpdate(e);
+  if(lookTouch.active && lookTouch.id==='mouse') lookUpdate(e);
+});
+document.addEventListener('mouseup', ()=>{
+  if(joystick.active && joystick.id==='mouse') joystickEnd();
+  if(lookTouch.active && lookTouch.id==='mouse'){ lookTouch.active=false; lookTouch.id=null; }
+});
+
+btnPause.addEventListener('click', ()=>{
+  if(gameState==='playing'){
+    gameState = 'paused';
+    pauseScreen.style.display = 'flex';
+    if(document.pointerLockElement) document.exitPointerLock();
+  }
+});
+btnMapToggle.addEventListener('click', ()=>{ minimapVisible = !minimapVisible; });
+
+document.getElementById('startBtn').addEventListener('click', ()=>{
+  ensureAudio();
+  newGame();
+  gameState = 'playing';
+  startScreen.style.display = 'none';
+  tryLockPointer();
+});
+document.getElementById('resumeBtn').addEventListener('click', ()=>{
+  gameState = 'playing';
+  pauseScreen.style.display = 'none';
+  tryLockPointer();
+});
+document.getElementById('restartBtn').addEventListener('click', ()=>{
+  ensureAudio();
+  newGame();
+  gameState = 'playing';
+  endScreen.style.display = 'none';
+  tryLockPointer();
+});
+
+/* ===================== UPDATE ===================== */
+function tryMove(nx, ny){
+  const r = PLAYER_RADIUS;
+  const checks = [[nx-r,ny-r],[nx+r,ny-r],[nx-r,ny+r],[nx+r,ny+r]];
+  for(const [cx,cy] of checks){
+    const gx = Math.floor(cx), gy = Math.floor(cy);
+    if(gy<0||gy>=GH||gx<0||gx>=GW||maze[gy][gx]===1) return false;
+  }
+  return true;
+}
+
+function movePlayer(dt){
+  const forward = ((keys['KeyW']||keys['ArrowUp'])?1:0) - ((keys['KeyS']||keys['ArrowDown'])?1:0);
+  const strafe = (keys['KeyD']?1:0) - (keys['KeyA']?1:0);
+  if(!pointerLocked){
+    if(keys['ArrowLeft']) player.angle -= ROT_SPEED*dt;
+    if(keys['ArrowRight']) player.angle += ROT_SPEED*dt;
+  }
+  const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
+  const rightX = Math.cos(player.angle+Math.PI/2), rightY = Math.sin(player.angle+Math.PI/2);
+  let mx = dirX*forward + rightX*strafe;
+  let my = dirY*forward + rightY*strafe;
+  if(touchControlsEnabled && joystick.active){
+    const jForward = -joystick.vecY, jStrafe = joystick.vecX;
+    mx += dirX*jForward + rightX*jStrafe;
+    my += dirY*jForward + rightY*jStrafe;
+  }
+  const len = Math.hypot(mx,my);
+  let moving = false;
+  if(len > 0.0001){ mx/=len; my/=len; moving = true; }
+  const nx = player.x + mx*MOVE_SPEED*dt;
+  const ny = player.y + my*MOVE_SPEED*dt;
+  if(tryMove(nx, player.y)) player.x = nx;
+  if(tryMove(player.x, ny)) player.y = ny;
+  return moving;
+}
+
+function chooseNextTarget(g){
+  const cx = Math.floor(g.x), cy = Math.floor(g.y);
+
+  if(g.state==='eaten'){
+    if(cx===homeCell[0] && cy===homeCell[1]){
+      g.state = 'chase';
+    }
+    const path = bfsPath(cx,cy,homeCell[0],homeCell[1]);
+    g.prevCell = [cx,cy];
+    g.targetCell = (path && path.length>1) ? path[1] : [cx,cy];
+    return;
+  }
+
+  if(g.state==='frightened'){
+    const all = getOpenNeighbors(cx,cy);
+    const filtered = all.filter(n => !(g.prevCell && n[0]===g.prevCell[0] && n[1]===g.prevCell[1]));
+    const options = filtered.length ? filtered : all;
+    let best = options[0], bestD = -1;
+    for(const n of options){
+      const d = Math.hypot(n[0]-player.x, n[1]-player.y);
+      if(d > bestD){ bestD = d; best = n; }
+    }
+    g.prevCell = [cx,cy];
+    g.targetCell = best;
+    return;
+  }
+
+  // chase-mode personalities
+  if(g.type==='random' && Math.random() < 0.55){
+    const all = getOpenNeighbors(cx,cy);
+    const filtered = all.filter(n => !(g.prevCell && n[0]===g.prevCell[0] && n[1]===g.prevCell[1]));
+    const options = filtered.length ? filtered : all;
+    g.prevCell = [cx,cy];
+    g.targetCell = options[(Math.random()*options.length)|0];
+    return;
+  }
+  if(g.type==='shy'){
+    const d = Math.hypot(player.x-g.x, player.y-g.y);
+    if(d < 4.5){
+      const all = getOpenNeighbors(cx,cy);
+      const filtered = all.filter(n => !(g.prevCell && n[0]===g.prevCell[0] && n[1]===g.prevCell[1]));
+      const options = filtered.length ? filtered : all;
+      let best = options[0], bestD = -1;
+      for(const n of options){
+        const dd = Math.hypot(n[0]-player.x, n[1]-player.y);
+        if(dd > bestD){ bestD = dd; best = n; }
+      }
+      g.prevCell = [cx,cy];
+      g.targetCell = best;
+      return;
+    }
+  }
+
+  let goalX = Math.floor(player.x), goalY = Math.floor(player.y);
+  if(g.type==='ambush'){
+    const pdx = Math.cos(player.angle), pdy = Math.sin(player.angle);
+    let ax = clamp(Math.floor(player.x + pdx*4), 1, GW-2);
+    let ay = clamp(Math.floor(player.y + pdy*4), 1, GH-2);
+    const f = findNearestFloor(ax,ay);
+    goalX = f[0]; goalY = f[1];
+  }
+  const path = bfsPath(cx,cy,goalX,goalY);
+  g.prevCell = [cx,cy];
+  if(path && path.length>1) g.targetCell = path[1];
+  else {
+    const opts = getOpenNeighbors(cx,cy);
+    g.targetCell = opts.length ? opts[(Math.random()*opts.length)|0] : [cx,cy];
+  }
+}
+
+function updateGhost(g, dt){
+  if(g.releaseDelay > 0){ g.releaseDelay -= dt; return; }
+  const tcx = g.targetCell[0]+0.5, tcy = g.targetCell[1]+0.5;
+  const dx = tcx-g.x, dy = tcy-g.y;
+  const dist = Math.hypot(dx,dy);
+  const speed = GHOST_SPEED * (g.state==='eaten'?EATEN_FACTOR : g.state==='frightened'?FRIGHT_FACTOR : 1);
+  if(dist < 0.09){
+    g.x = tcx; g.y = tcy;
+    chooseNextTarget(g);
+  } else {
+    g.x += dx/dist*speed*dt;
+    g.y += dy/dist*speed*dt;
+  }
+}
+
+function loseLife(){
+  lives -= 1;
+  sfxDeath();
+  invulnTimer = INVULN_DURATION;
+  const start = findNearestFloor(Math.floor(homeCell[0]===1?GW-2:1), 1);
+  // respawn player back at original start-ish corner (opposite of ghost home)
+  const respawn = findNearestFloor(1,1);
+  player.x = respawn[0]+0.5; player.y = respawn[1]+0.5;
+  player.angle = initialAngle(respawn[0], respawn[1]);
+  for(const g of ghosts){
+    g.x = homeCell[0]+0.5; g.y = homeCell[1]+0.5;
+    g.state = 'chase';
+    g.targetCell = [homeCell[0],homeCell[1]];
+    g.prevCell = [homeCell[0],homeCell[1]];
+  }
+  if(lives <= 0){
+    endGame(false);
+  }
+}
+
+function endGame(won){
+  gameState = won ? 'win' : 'gameover';
+  if(document.pointerLockElement) document.exitPointerLock();
+  endTitle.textContent = won ? 'YOU WIN!' : 'GAME OVER';
+  endScoreEl.textContent = 'Score: ' + score;
+  endScreen.style.display = 'flex';
+  if(won) sfxWin();
+}
+
+function updateHUD(){
+  scoreEl.textContent = 'SCORE ' + score;
+  livesRow.innerHTML = '';
+  for(let i=0;i<Math.max(lives,0);i++){
+    const d = document.createElement('div');
+    d.className = 'life';
+    livesRow.appendChild(d);
+  }
+  pelletsLeftEl.textContent = 'PELLETS: ' + pelletsRemaining + ' / ' + pelletsTotal;
+  if(frenzyTimer > 0){
+    frenzyWrap.style.display = 'block';
+    frenzyBar.style.width = clamp(frenzyTimer/FRENZY_DURATION,0,1)*100 + '%';
+  } else {
+    frenzyWrap.style.display = 'none';
+  }
+}
+
+function updateGame(dt){
+  const moving = movePlayer(dt);
+
+  for(const g of ghosts) updateGhost(g, dt);
+
+  let hudDirty = false;
+  for(const p of pellets){
+    if(p.eaten) continue;
+    const d = Math.hypot(p.x-player.x, p.y-player.y);
+    if(d < EAT_PELLET_R){
+      p.eaten = true;
+      pelletsRemaining--;
+      hudDirty = true;
+      if(p.power){
+        score += 50;
+        frenzyTimer = FRENZY_DURATION;
+        for(const g of ghosts) if(g.state!=='eaten') g.state = 'frightened';
+        sfxPower();
+      } else {
+        score += 10;
+        sfxPellet();
+      }
+    }
+  }
+
+  if(invulnTimer > 0) invulnTimer -= dt;
+  if(invulnTimer <= 0){
+    for(const g of ghosts){
+      const d = Math.hypot(g.x-player.x, g.y-player.y);
+      if(d < EAT_GHOST_R){
+        if(g.state==='frightened'){
+          g.state = 'eaten';
+          score += 200;
+          sfxEatGhost();
+          chooseNextTarget(g);
+        } else if(g.state!=='eaten'){
+          loseLife();
+          hudDirty = true;
+          break;
+        }
+      }
+    }
+  }
+
+  if(frenzyTimer > 0){
+    frenzyTimer -= dt;
+    if(frenzyTimer <= 0){
+      frenzyTimer = 0;
+      for(const g of ghosts) if(g.state==='frightened') g.state = 'chase';
+    }
+    hudDirty = true;
+  }
+
+  if(pelletsRemaining <= 0 && gameState==='playing'){
+    endGame(true);
+  }
+
+  if(hudDirty) updateHUD();
+  return moving;
+}
+
+/* ===================== RENDER: WALLS ===================== */
+function renderFloorCeiling(bobY){
+  const w = canvas.width, h = canvas.height;
+  const horizon = h/2 + bobY;
+  const gTop = ctx.createLinearGradient(0,0,0,horizon);
+  gTop.addColorStop(0,'#04040c');
+  gTop.addColorStop(1,'#0c1230');
+  ctx.fillStyle = gTop;
+  ctx.fillRect(0,0,w,Math.max(0,horizon));
+
+  const gBot = ctx.createLinearGradient(0,horizon,0,h);
+  gBot.addColorStop(0,'#0a0a0a');
+  gBot.addColorStop(1,'#28282c');
+  ctx.fillStyle = gBot;
+  ctx.fillRect(0,Math.max(0,horizon),w,h-Math.max(0,horizon));
+}
+
+function castWalls(){
+  const w = canvas.width, h = canvas.height;
+  const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
+  const planeLen = Math.tan(FOV/2);
+  const planeX = -dirY*planeLen, planeY = dirX*planeLen;
+
+  for(let x=0; x<w; x++){
+    const cameraX = 2*x/w - 1;
+    const rayDirX = dirX + planeX*cameraX;
+    const rayDirY = dirY + planeY*cameraX;
+    let mapX = Math.floor(player.x), mapY = Math.floor(player.y);
+
+    const deltaDistX = rayDirX===0 ? 1e30 : Math.abs(1/rayDirX);
+    const deltaDistY = rayDirY===0 ? 1e30 : Math.abs(1/rayDirY);
+    let stepX, stepY, sideDistX, sideDistY;
+    if(rayDirX < 0){ stepX=-1; sideDistX=(player.x-mapX)*deltaDistX; }
+    else { stepX=1; sideDistX=(mapX+1-player.x)*deltaDistX; }
+    if(rayDirY < 0){ stepY=-1; sideDistY=(player.y-mapY)*deltaDistY; }
+    else { stepY=1; sideDistY=(mapY+1-player.y)*deltaDistY; }
+
+    let hit = 0, side = 0, safety = 0;
+    while(hit===0 && safety < 128){
+      if(sideDistX < sideDistY){ sideDistX += deltaDistX; mapX += stepX; side = 0; }
+      else { sideDistY += deltaDistY; mapY += stepY; side = 1; }
+      if(mapY<0||mapY>=GH||mapX<0||mapX>=GW||maze[mapY][mapX]===1) hit = 1;
+      safety++;
+    }
+
+    let perpDist;
+    if(side===0) perpDist = (mapX - player.x + (1-stepX)/2) / (rayDirX||1e-6);
+    else perpDist = (mapY - player.y + (1-stepY)/2) / (rayDirY||1e-6);
+    if(perpDist <= 0.0001) perpDist = 0.0001;
+    zbuffer[x] = perpDist;
+
+    const lineHeight = Math.floor(h/perpDist);
+    let drawStart = Math.floor(-lineHeight/2 + h/2);
+    let drawEnd = Math.floor(lineHeight/2 + h/2);
+    const clipStart = drawStart < 0 ? 0 : drawStart;
+    const clipHeight = (drawEnd < h ? drawEnd : h-1) - clipStart;
+    if(clipHeight <= 0) continue;
+
+    const checker = (mapX + mapY) % 2 === 0;
+    const base = checker ? [46,92,224] : [34,72,196];
+    const shade = side===1 ? 0.68 : 1.0;
+    const fog = Math.max(0.12, 1 - perpDist/15);
+    const r = base[0]*shade*fog, g = base[1]*shade*fog, b = base[2]*shade*fog;
+    ctx.fillStyle = 'rgb(' + (r|0) + ',' + (g|0) + ',' + (b|0) + ')';
+    ctx.fillRect(x, clipStart, 1, clipHeight);
+
+    // subtle brick line accents every other wall cell for depth cue
+    if((mapX+mapY) % 3 === 0){
+      ctx.fillStyle = 'rgba(255,255,255,' + (0.05*fog) + ')';
+      ctx.fillRect(x, clipStart, 1, 2);
+    }
+  }
+}
+
+/* ===================== RENDER: SPRITES ===================== */
+function renderSprites(){
+  const w = canvas.width, h = canvas.height;
+  const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
+  const planeLen = Math.tan(FOV/2);
+  const planeX = -dirY*planeLen, planeY = dirX*planeLen;
+  const invDet = 1.0 / (planeX*dirY - dirX*planeY);
+
+  const sprites = [];
+  for(const p of pellets){
+    if(p.eaten) continue;
+    const ddx = p.x-player.x, ddy = p.y-player.y;
+    const d2 = ddx*ddx+ddy*ddy;
+    if(d2 > 144) continue; // cull far pellets
+    let scale = p.power ? (0.5 + Math.sin(performance.now()/180)*0.06) : 0.25;
+    sprites.push({ x:p.x, y:p.y, tex: p.power?texPowerPellet:texPellet, scale, d2 });
+  }
+  for(const g of ghosts){
+    const ddx = g.x-player.x, ddy = g.y-player.y;
+    const d2 = ddx*ddx+ddy*ddy;
+    const scale = g.state==='eaten' ? 0.45 : 0.85;
+    sprites.push({ x:g.x, y:g.y, tex: ghostTexture(g), scale, d2 });
+  }
+  sprites.sort((a,b)=> b.d2 - a.d2);
+
+  for(const s of sprites){
+    const dx = s.x-player.x, dy = s.y-player.y;
+    const transformX = invDet*(dirY*dx - dirX*dy);
+    const transformY = invDet*(-planeY*dx + planeX*dy);
+    if(transformY <= 0.05) continue;
+    const spriteScreenX = Math.floor((w/2)*(1+transformX/transformY));
+    const spriteSize = Math.abs(Math.floor(h/transformY*s.scale));
+    if(spriteSize <= 0 || spriteSize > 4000) continue;
+    const drawStartY = Math.floor(-spriteSize/2+h/2);
+    const drawEndY = Math.floor(spriteSize/2+h/2);
+    const drawStartX = Math.floor(-spriteSize/2+spriteScreenX);
+    const drawEndX = Math.floor(spriteSize/2+spriteScreenX);
+    const spanW = (drawEndX-drawStartX) || 1;
+    const texW = s.tex.width, texH = s.tex.height;
+
+    const dsx = drawStartX < 0 ? 0 : drawStartX;
+    const dex = drawEndX >= w ? w-1 : drawEndX;
+    for(let stripe = dsx; stripe <= dex; stripe++){
+      if(transformY < zbuffer[stripe]){
+        const texX = Math.floor((stripe-drawStartX)/spanW*texW);
+        if(texX < 0 || texX >= texW) continue;
+        ctx.drawImage(s.tex, texX, 0, 1, texH, stripe, drawStartY, 1, drawEndY-drawStartY);
+      }
+    }
+  }
+}
+
+/* ===================== MINIMAP ===================== */
+function renderMinimap(){
+  if(!minimapVisible){ minimapCanvas.style.display='none'; return; }
+  minimapCanvas.style.display = 'block';
+  const W = minimapCanvas.width, H = minimapCanvas.height;
+  mctx.clearRect(0,0,W,H);
+  mctx.fillStyle = 'rgba(0,0,10,0.55)';
+  mctx.fillRect(0,0,W,H);
+  const scale = Math.min(W/GW, H/GH);
+  const offX = (W - GW*scale)/2, offY = (H - GH*scale)/2;
+
+  for(let y=0;y<GH;y++){
+    for(let x=0;x<GW;x++){
+      mctx.fillStyle = maze[y][x]===1 ? '#16205e' : '#000';
+      mctx.fillRect(offX+x*scale, offY+y*scale, scale+0.5, scale+0.5);
+    }
+  }
+  mctx.fillStyle = '#ffe9a8';
+  for(const p of pellets){
+    if(p.eaten) continue;
+    const r = p.power?1.6:0.9;
+    mctx.beginPath();
+    mctx.arc(offX+p.x*scale, offY+p.y*scale, r, 0, Math.PI*2);
+    mctx.fill();
+  }
+  const colorMap = { chase:'#ff3b3b', ambush:'#ff9bd6', random:'#3bf0ff', shy:'#ffa63b' };
+  for(const g of ghosts){
+    mctx.fillStyle = g.state==='frightened' ? '#3b5bff' : (g.state==='eaten' ? '#888' : colorMap[g.type]);
+    mctx.beginPath();
+    mctx.arc(offX+g.x*scale, offY+g.y*scale, 2.6, 0, Math.PI*2);
+    mctx.fill();
+  }
+  mctx.fillStyle = '#ffff33';
+  mctx.beginPath();
+  mctx.arc(offX+player.x*scale, offY+player.y*scale, 2.8, 0, Math.PI*2);
+  mctx.fill();
+  mctx.strokeStyle = '#ffff33';
+  mctx.lineWidth = 1.4;
+  mctx.beginPath();
+  mctx.moveTo(offX+player.x*scale, offY+player.y*scale);
+  mctx.lineTo(offX+(player.x+Math.cos(player.angle)*1.4)*scale, offY+(player.y+Math.sin(player.angle)*1.4)*scale);
+  mctx.stroke();
+}
+
+/* ===================== MAIN LOOP ===================== */
+function resizeCanvas(){
+  const maxW = 960;
+  const ratio = window.innerWidth / window.innerHeight;
+  let cw = Math.min(window.innerWidth, maxW);
+  let ch = Math.round(cw / ratio);
+  canvas.width = cw;
+  canvas.height = ch;
+  zbuffer = new Array(cw).fill(1e9);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+let lastMoving = false;
+function frame(t){
+  const dt = Math.min(0.05, (t - lastTime)/1000 || 0);
+  lastTime = t;
+
+  if(gameState==='playing'){
+    lastMoving = updateGame(dt);
+  }
+
+  // always render current scene (frozen if paused/ended)
+  const bobY = (gameState==='playing' && lastMoving) ? Math.sin(performance.now()/140)*4 : 0;
+  ctx.save();
+  ctx.translate(0, bobY);
+  renderFloorCeiling(bobY);
+  castWalls();
+  renderSprites();
+  ctx.restore();
+  renderMinimap();
+
+  requestAnimationFrame(frame);
+}
+
+/* ===================== INIT ===================== */
+buildPelletTextures();
+buildGhostTextures();
+newGame();
+gameState = 'start';
+requestAnimationFrame(frame);
+
+})();
+</script>
+</body>
+</html>
