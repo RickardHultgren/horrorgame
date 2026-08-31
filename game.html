@@ -158,7 +158,9 @@
     right:calc(68px + var(--browser-ui-gutter));
   }
   #stage.rotated #switchesWrap{
-    left:35%;
+    /* In the rotated coordinate system, a smaller logical left value moves
+       this control group higher on the visible landscape screen. */
+    left:20%;
   }
 </style>
 </head>
