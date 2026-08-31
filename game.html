@@ -139,6 +139,27 @@
   }
   #btnPause{ right:16px; }
   #btnMapToggle{ right:68px; }
+
+  /* ---- forced-landscape mobile clearance ----
+     In rotated mode Chrome's portrait address/navigation UI can overlap the
+     logical right edge of the game. Move the right-side controls inward and
+     move the switches above the visual centre. */
+  #stage.rotated{ --browser-ui-gutter:88px; }
+  #stage.rotated #turnJoystickBase{
+    right:calc(26px + var(--browser-ui-gutter));
+  }
+  #stage.rotated #minimap{
+    right:calc(14px + var(--browser-ui-gutter));
+  }
+  #stage.rotated #btnPause{
+    right:calc(16px + var(--browser-ui-gutter));
+  }
+  #stage.rotated #btnMapToggle{
+    right:calc(68px + var(--browser-ui-gutter));
+  }
+  #stage.rotated #switchesWrap{
+    left:35%;
+  }
 </style>
 </head>
 <body>
