@@ -21,6 +21,12 @@
     display:flex; align-items:center; justify-content:center;
     background:#000;
   }
+  #stage.rotated{
+    position:fixed; top:0; left:0;
+    width:100vh; height:100vw;
+    transform-origin: top left;
+    transform: rotate(90deg) translateY(-100%);
+  }
   #game{
     display:block; width:100%; height:100%;
     image-rendering:auto;
@@ -79,16 +85,19 @@
   #ghostLegend{ display:flex; gap:16px; flex-wrap:wrap; justify-content:center; margin-top:6px;}
   #ghostLegend div{ display:flex; align-items:center; gap:6px; font-size:12px; }
   .swatch{ width:12px; height:12px; border-radius:50% 50% 40% 40%; display:inline-block;}
-  #hidden{ display:none; }
 
-  /* ---- on/off switch for touch controls ---- */
-  #touchToggleWrap{
+  /* ---- on/off switches (touch controls + landscape rotate) ---- */
+  #switchesWrap{
     position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
-    z-index:30; display:flex; align-items:center; gap:8px;
+    z-index:30; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+    justify-content:center; pointer-events:none;
+  }
+  .switchPill{
+    display:flex; align-items:center; gap:8px;
     background:rgba(0,0,10,0.5); border:1px solid rgba(255,225,53,0.35);
     border-radius:20px; padding:6px 14px; pointer-events:auto;
   }
-  #touchToggleLabel{ color:#ffe135; font-size:12px; letter-spacing:1px; font-weight:700; }
+  .switchPill span{ color:#ffe135; font-size:12px; letter-spacing:1px; font-weight:700; }
   .switch{ position:relative; display:inline-block; width:40px; height:22px; flex:none; }
   .switch input{ opacity:0; width:0; height:0; }
   .switch .slider{
@@ -103,20 +112,23 @@
   .switch input:checked + .slider{ background:#2a8f3f; }
   .switch input:checked + .slider::before{ transform:translateX(18px); background:#fff; }
 
-  /* ---- on-screen mobile controls ---- */
+  /* ---- on-screen mobile controls: dual joystick ---- */
   #touchControlsUI{ position:absolute; inset:0; z-index:15; pointer-events:none; display:none; }
-  #joystickBase{
-    position:absolute; left:26px; bottom:70px; width:120px; height:120px;
+  .joyBase{
+    position:absolute; bottom:70px; width:120px; height:120px;
     border-radius:50%; background:rgba(255,255,255,0.07);
     border:2px solid rgba(255,225,53,0.45); pointer-events:auto;
     touch-action:none;
   }
-  #joystickKnob{
+  #joystickBase{ left:26px; }
+  #turnJoystickBase{ right:26px; border-color:rgba(59,240,255,0.5); }
+  .joyKnob{
     position:absolute; left:50%; top:50%; width:54px; height:54px;
     margin:-27px 0 0 -27px; border-radius:50%;
-    background:rgba(255,225,53,0.55); border:2px solid rgba(255,225,53,0.9);
     pointer-events:none;
   }
+  #joystickKnob{ background:rgba(255,225,53,0.55); border:2px solid rgba(255,225,53,0.9); }
+  #turnJoystickKnob{ background:rgba(59,240,255,0.45); border:2px solid rgba(59,240,255,0.9); }
   #btnPause, #btnMapToggle{
     position:absolute; top:16px; width:44px; height:44px; border-radius:50%;
     background:rgba(0,0,10,0.5); border:1px solid rgba(255,225,53,0.4);
@@ -146,16 +158,26 @@
     </div>
   </div>
 
-  <div id="touchToggleWrap">
-    <label class="switch">
-      <input type="checkbox" id="touchToggle">
-      <span class="slider"></span>
-    </label>
-    <span id="touchToggleLabel">Screen Controls</span>
+  <div id="switchesWrap">
+    <div class="switchPill">
+      <label class="switch">
+        <input type="checkbox" id="touchToggle">
+        <span class="slider"></span>
+      </label>
+      <span>Screen Controls</span>
+    </div>
+    <div class="switchPill">
+      <label class="switch">
+        <input type="checkbox" id="rotateToggle">
+        <span class="slider"></span>
+      </label>
+      <span>Landscape (90°)</span>
+    </div>
   </div>
 
   <div id="touchControlsUI">
-    <div id="joystickBase"><div id="joystickKnob"></div></div>
+    <div id="joystickBase" class="joyBase"><div id="joystickKnob" class="joyKnob"></div></div>
+    <div id="turnJoystickBase" class="joyBase"><div id="turnJoystickKnob" class="joyKnob"></div></div>
     <div id="btnPause" title="Pause">⏸</div>
     <div id="btnMapToggle" title="Toggle Map">🗺</div>
   </div>
@@ -169,8 +191,8 @@
       Mouse look (click to lock) &nbsp;·&nbsp; <span class="kbd">M</span> toggle map &nbsp;·&nbsp;
       <span class="kbd">Esc</span> pause
     </p>
-    <p>On mobile: use the joystick to move, drag anywhere to look around.
-       Toggle on-screen controls anytime with the switch in the corner.</p>
+    <p>On mobile: left stick moves, right stick turns. Toggle on-screen controls or
+       rotate into landscape mode anytime with the switches below.</p>
     <div id="ghostLegend">
       <div><span class="swatch" style="background:#ff3b3b;"></span>Blinky — hunts you directly</div>
       <div><span class="swatch" style="background:#ff9bd6;"></span>Pinky — ambushes ahead of you</div>
@@ -202,6 +224,7 @@ const FOV = 66 * Math.PI/180;
 const MOVE_SPEED = 3.2;
 const ROT_SPEED = 2.6;
 const MOUSE_SENS = 0.0022;
+const TURN_JOYSTICK_RATE = 2.4;
 const GHOST_SPEED = 2.05;
 const FRIGHT_FACTOR = 0.6;
 const EATEN_FACTOR = 1.9;
@@ -211,6 +234,7 @@ const EAT_GHOST_R = 0.55;
 const FRENZY_DURATION = 8.0;
 const INVULN_DURATION = 2.0;
 const MAX_LIVES = 3;
+const TEX_SIZE = 16; // wall/floor/ceiling texture resolution (power of two)
 
 /* ===================== STATE ===================== */
 let maze, GW, GH;
@@ -230,6 +254,7 @@ let audioCtx = null;
 let homeCell = [1,1];
 
 /* ===================== DOM ===================== */
+const stageEl = document.getElementById('stage');
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const minimapCanvas = document.getElementById('minimap');
@@ -274,7 +299,6 @@ function sfxDeath(){ beep(400,0.6,'sawtooth',0.18,60); }
 function sfxWin(){ beep(523,0.12,'square',0.15); setTimeout(()=>beep(659,0.12,'square',0.15),120); setTimeout(()=>beep(784,0.2,'square',0.15),240); }
 
 /* ===================== THE LEVEL (fixed grid, defined as JSON) ===================== */
-/* 0 = floor, 1 = wall. Each string in "grid" is one row; each character one cell. */
 const LEVEL_JSON = `{
   "width": 21,
   "height": 17,
@@ -301,8 +325,7 @@ const LEVEL_JSON = `{
 
 function loadLevel(){
   const data = JSON.parse(LEVEL_JSON);
-  const grid = data.grid.map(row => row.split('').map(ch => ch === '1' ? 1 : 0));
-  return grid;
+  return data.grid.map(row => row.split('').map(ch => ch === '1' ? 1 : 0));
 }
 
 function findNearestFloor(tx,ty){
@@ -374,98 +397,271 @@ function initialAngle(cx,cy){
   return 0;
 }
 
-/* ===================== TEXTURES (sprites) ===================== */
-let texPellet, texPowerPellet, ghostTexNormal = {}, texScared, texScaredFlash, texEaten;
+/* ===================== NETPBM (PBM/PGM plaintext) TEXTURES ===================== */
+/* All wall, floor, ceiling and sprite art is authored as Netpbm plain-text data:
+   P1 = bitmap (0/1), P2 = grayscale (0..maxval). A parser turns this text into
+   pixel arrays, which are then tinted per use (wall color, ghost color, etc). */
 
-function makeCanvas(size){ const c=document.createElement('canvas'); c.width=size; c.height=size; return c; }
-
-function buildPelletTextures(){
-  texPellet = makeCanvas(16);
-  let tc = texPellet.getContext('2d');
-  tc.beginPath(); tc.arc(8,8,4.2,0,Math.PI*2); tc.fillStyle='#ffe9a8'; tc.fill();
-
-  texPowerPellet = makeCanvas(24);
-  tc = texPowerPellet.getContext('2d');
-  const grad = tc.createRadialGradient(12,12,2,12,12,11);
-  grad.addColorStop(0,'#fff7d6'); grad.addColorStop(1,'#ffcf3a');
-  tc.beginPath(); tc.arc(12,12,10,0,Math.PI*2); tc.fillStyle=grad; tc.fill();
+function parseNetpbm(text){
+  const tokens = text.replace(/#[^\n]*/g,'').trim().split(/\s+/);
+  let idx = 0;
+  const magic = tokens[idx++];
+  const width = parseInt(tokens[idx++],10);
+  const height = parseInt(tokens[idx++],10);
+  let maxval = 1;
+  if(magic === 'P2') maxval = parseInt(tokens[idx++],10);
+  const size = width*height;
+  const data = new Array(size);
+  for(let i=0;i<size;i++) data[i] = parseInt(tokens[idx++],10);
+  return { magic, width, height, maxval, data };
 }
 
-function drawGhostBody(tc, size, bodyColor){
-  tc.clearRect(0,0,size,size);
-  tc.fillStyle = bodyColor;
-  tc.beginPath();
-  tc.moveTo(size*0.1, size*0.92);
-  tc.lineTo(size*0.1, size*0.46);
-  tc.arc(size*0.5, size*0.46, size*0.4, Math.PI, 0, false);
-  tc.lineTo(size*0.9, size*0.92);
-  const bumps = 4;
-  const segW = (size*0.8)/bumps;
-  for(let i=0;i<bumps;i++){
-    const x1 = size*0.9 - segW*i;
-    const xMid = x1 - segW/2;
-    const x2 = x1 - segW;
-    const yTop = size*0.92, yDip = size*0.74;
-    tc.quadraticCurveTo(xMid, (i%2===0)?yDip:yTop, x2, yTop);
+const NETPBM_WALL = `P2
+# wall brick texture
+16 16
+255
+45 45 45 45 45 45 45 45 45 45 45 45 45 45 45 45
+45 163 175 182 185 182 175 163 45 163 175 182 185 182 175 163
+45 163 175 182 185 182 175 163 45 163 175 182 185 182 175 163
+45 163 175 182 185 182 175 163 45 163 175 182 185 182 175 163
+45 45 45 45 45 45 45 45 45 45 45 45 45 45 45 45
+185 182 175 163 45 163 175 182 185 182 175 163 45 163 175 182
+185 182 175 163 45 163 175 182 185 182 175 163 45 163 175 182
+185 182 175 163 45 163 175 182 185 182 175 163 45 163 175 182
+45 45 45 45 45 45 45 45 45 45 45 45 45 45 45 45
+45 163 175 182 185 182 175 163 45 163 175 182 185 182 175 163
+45 163 175 182 185 182 175 163 45 163 175 182 185 182 175 163
+45 163 175 182 185 182 175 163 45 163 175 182 185 182 175 163
+45 45 45 45 45 45 45 45 45 45 45 45 45 45 45 45
+185 182 175 163 45 163 175 182 185 182 175 163 45 163 175 182
+185 182 175 163 45 163 175 182 185 182 175 163 45 163 175 182
+185 182 175 163 45 163 175 182 185 182 175 163 45 163 175 182
+`;
+
+const NETPBM_FLOOR = `P2
+# floor tile texture
+16 16
+255
+55 55 55 55 55 55 55 55 55 55 55 55 55 55 55 55
+55 108 114 118 120 118 114 108 55 108 114 118 120 118 114 108
+55 114 122 128 130 128 122 114 55 114 122 128 130 128 122 114
+55 118 128 136 140 136 128 118 55 118 128 136 140 136 128 118
+55 120 130 140 150 140 130 120 55 120 130 140 150 140 130 120
+55 118 128 136 140 136 128 118 55 118 128 136 140 136 128 118
+55 114 122 128 130 128 122 114 55 114 122 128 130 128 122 114
+55 108 114 118 120 118 114 108 55 108 114 118 120 118 114 108
+55 55 55 55 55 55 55 55 55 55 55 55 55 55 55 55
+55 108 114 118 120 118 114 108 55 108 114 118 120 118 114 108
+55 114 122 128 130 128 122 114 55 114 122 128 130 128 122 114
+55 118 128 136 140 136 128 118 55 118 128 136 140 136 128 118
+55 120 130 140 150 140 130 120 55 120 130 140 150 140 130 120
+55 118 128 136 140 136 128 118 55 118 128 136 140 136 128 118
+55 114 122 128 130 128 122 114 55 114 122 128 130 128 122 114
+55 108 114 118 120 118 114 108 55 108 114 118 120 118 114 108
+`;
+
+const NETPBM_CEILING = `P2
+# ceiling panel texture
+16 16
+255
+30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30
+30 45 48 51 52 51 48 45 30 45 48 51 52 51 48 45
+30 48 53 57 58 57 53 48 30 48 53 57 58 57 53 48
+30 51 57 62 64 62 57 51 30 51 57 62 64 62 57 51
+30 52 58 64 70 64 58 52 30 52 58 64 70 64 58 52
+30 51 57 62 64 62 57 51 30 51 57 62 64 62 57 51
+30 48 53 57 58 57 53 48 30 48 53 57 58 57 53 48
+30 45 48 51 52 51 48 45 30 45 48 51 52 51 48 45
+30 30 30 30 30 30 30 30 30 30 30 30 30 30 30 30
+30 45 48 51 52 51 48 45 30 45 48 51 52 51 48 45
+30 48 53 57 58 57 53 48 30 48 53 57 58 57 53 48
+30 51 57 62 64 62 57 51 30 51 57 62 64 62 57 51
+30 52 58 64 70 64 58 52 30 52 58 64 70 64 58 52
+30 51 57 62 64 62 57 51 30 51 57 62 64 62 57 51
+30 48 53 57 58 57 53 48 30 48 53 57 58 57 53 48
+30 45 48 51 52 51 48 45 30 45 48 51 52 51 48 45
+`;
+
+const NETPBM_PELLET = `P1
+# pellet
+12 12
+0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 1 1 0 0 0 0 0
+0 0 0 1 1 1 1 1 1 0 0 0
+0 0 1 1 1 1 1 1 1 1 0 0
+0 0 1 1 1 1 1 1 1 1 0 0
+0 1 1 1 1 1 1 1 1 1 1 0
+0 1 1 1 1 1 1 1 1 1 1 0
+0 0 1 1 1 1 1 1 1 1 0 0
+0 0 1 1 1 1 1 1 1 1 0 0
+0 0 0 1 1 1 1 1 1 0 0 0
+0 0 0 0 0 1 1 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0
+`;
+
+const NETPBM_POWER = `P2
+# power pellet glow
+16 16
+255
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 33 53 62 62 53 33 0 0 0 0 0
+0 0 0 19 62 85 99 106 106 99 85 62 19 0 0 0
+0 0 19 70 99 120 134 141 141 134 120 99 70 19 0 0
+0 0 62 99 127 148 162 170 170 162 148 127 99 62 0 0
+0 33 85 120 148 170 187 196 196 187 170 148 120 85 33 0
+0 53 99 134 162 187 207 220 220 207 187 162 134 99 53 0
+0 62 106 141 170 196 220 240 240 220 196 170 141 106 62 0
+0 62 106 141 170 196 220 240 240 220 196 170 141 106 62 0
+0 53 99 134 162 187 207 220 220 207 187 162 134 99 53 0
+0 33 85 120 148 170 187 196 196 187 170 148 120 85 33 0
+0 0 62 99 127 148 162 170 170 162 148 127 99 62 0 0
+0 0 19 70 99 120 134 141 141 134 120 99 70 19 0 0
+0 0 0 19 62 85 99 106 106 99 85 62 19 0 0 0
+0 0 0 0 0 33 53 62 62 53 33 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+`;
+
+const NETPBM_GHOST_BODY = `P2
+# ghost body silhouette
+24 24
+255
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 180 181 182 182 181 180 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 181 183 184 186 186 186 186 184 183 181 0 0 0 0 0 0 0
+0 0 0 0 0 179 182 184 187 189 190 191 191 190 189 187 184 182 179 0 0 0 0 0
+0 0 0 0 178 182 185 188 191 193 194 195 195 194 193 191 188 185 182 178 0 0 0 0
+0 0 0 176 181 184 188 192 194 197 198 199 199 198 197 194 192 188 184 181 176 0 0 0
+0 0 0 178 183 187 191 195 198 201 203 204 204 203 201 198 195 191 187 183 178 0 0 0
+0 0 175 180 185 189 194 198 201 204 207 208 208 207 204 201 198 194 189 185 180 175 0 0
+0 0 176 181 186 191 196 200 204 208 211 212 212 211 208 204 200 196 191 186 181 176 0 0
+0 0 177 182 187 192 197 202 206 211 214 217 217 214 211 206 202 197 192 187 182 177 0 0
+0 0 177 182 187 192 197 203 208 213 217 221 221 217 213 208 203 197 192 187 182 177 0 0
+0 171 176 181 187 192 197 202 208 213 218 223 223 218 213 208 202 197 192 187 181 176 171 0
+0 0 175 180 185 191 196 201 206 211 216 219 219 216 211 206 201 196 191 185 180 175 170 0
+0 0 173 178 184 189 194 198 203 207 211 213 213 211 207 203 198 194 189 184 178 173 168 0
+0 0 171 176 181 186 191 195 199 203 206 207 207 206 203 199 195 191 186 181 176 171 166 0
+0 0 169 173 178 183 187 191 195 198 200 201 201 200 198 195 191 187 183 178 173 169 164 0
+0 0 165 170 174 179 183 186 190 192 194 195 195 194 192 190 186 183 179 174 170 165 161 0
+0 0 162 166 171 174 178 182 184 187 188 189 189 188 187 184 182 178 174 171 166 162 157 0
+0 0 158 162 166 170 173 176 179 181 183 183 183 183 181 179 176 173 170 166 162 158 154 0
+0 0 154 158 162 165 168 171 173 175 177 177 177 177 175 173 171 168 165 162 158 154 150 0
+0 0 150 153 157 160 0 166 168 169 171 171 0 171 169 168 166 163 0 157 153 150 146 0
+0 0 145 149 152 0 0 0 162 164 165 0 0 0 164 162 160 0 0 0 149 145 142 0
+0 0 0 144 0 0 0 0 0 158 0 0 0 0 0 156 0 0 0 0 0 141 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+`;
+
+const NETPBM_GHOST_EYES = `P2
+# ghost eyes overlay
+24 24
+255
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 250 250 250 0 0 0 0 0 250 250 250 0 0 0 0 0 0
+0 0 0 0 0 0 250 250 250 250 250 0 0 0 250 250 250 250 250 0 0 0 0 0
+0 0 0 0 0 0 250 250 250 55 250 0 0 0 250 250 55 55 250 0 0 0 0 0
+0 0 0 0 0 0 250 250 55 55 55 0 0 0 250 250 55 55 250 0 0 0 0 0
+0 0 0 0 0 0 250 250 250 55 250 0 0 0 250 250 250 55 250 0 0 0 0 0
+0 0 0 0 0 0 0 250 250 250 0 0 0 0 0 250 250 250 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+`;
+
+const pgmWall = parseNetpbm(NETPBM_WALL);
+const pgmFloor = parseNetpbm(NETPBM_FLOOR);
+const pgmCeiling = parseNetpbm(NETPBM_CEILING);
+const pbmPellet = parseNetpbm(NETPBM_PELLET);
+const pgmPower = parseNetpbm(NETPBM_POWER);
+const pgmGhostBody = parseNetpbm(NETPBM_GHOST_BODY);
+const pgmGhostEyes = parseNetpbm(NETPBM_GHOST_EYES);
+
+/* Build a tinted <canvas> from parsed Netpbm data.
+   maskZero=true => value 0 is fully transparent (used for sprites). */
+function buildTintedCanvas(pgm, tint, maskZero){
+  const { width, height, maxval, data } = pgm;
+  const c = document.createElement('canvas');
+  c.width = width; c.height = height;
+  const cctx = c.getContext('2d');
+  const img = cctx.createImageData(width, height);
+  for(let i=0;i<width*height;i++){
+    const v = data[i];
+    if(maskZero && v<=0){ img.data[i*4+3]=0; continue; }
+    const lum = maxval>0 ? v/maxval : 0;
+    img.data[i*4+0] = tint[0]*lum;
+    img.data[i*4+1] = tint[1]*lum;
+    img.data[i*4+2] = tint[2]*lum;
+    img.data[i*4+3] = 255;
   }
-  tc.closePath();
-  tc.fill();
+  cctx.putImageData(img,0,0);
+  return c;
 }
 
-function drawGhostEyes(tc, size, scared){
-  tc.fillStyle = '#fff';
-  tc.beginPath(); tc.ellipse(size*0.36,size*0.44,size*0.1,size*0.13,0,0,Math.PI*2); tc.fill();
-  tc.beginPath(); tc.ellipse(size*0.64,size*0.44,size*0.1,size*0.13,0,0,Math.PI*2); tc.fill();
-  tc.fillStyle = scared ? '#2a4bd7' : '#1a3fa0';
-  tc.beginPath(); tc.arc(size*0.38,size*0.46,size*0.045,0,Math.PI*2); tc.fill();
-  tc.beginPath(); tc.arc(size*0.66,size*0.46,size*0.045,0,Math.PI*2); tc.fill();
-}
-
-function buildGhostTextures(){
-  const colors = { chase:'#ff3b3b', ambush:'#ff9bd6', random:'#3bf0ff', shy:'#ffa63b' };
-  const size = 64;
-  for(const key in colors){
-    const c = makeCanvas(size);
-    const tc = c.getContext('2d');
-    drawGhostBody(tc, size, colors[key]);
-    drawGhostEyes(tc, size, false);
-    ghostTexNormal[key] = c;
+/* Ghost eyes use a fixed white/blue palette rather than a per-ghost tint. */
+function buildEyesCanvas(pgm){
+  const { width, height, data } = pgm;
+  const c = document.createElement('canvas');
+  c.width=width; c.height=height;
+  const cctx = c.getContext('2d');
+  const img = cctx.createImageData(width,height);
+  for(let i=0;i<width*height;i++){
+    const v = data[i];
+    if(v<=0){ img.data[i*4+3]=0; continue; }
+    if(v>=150){ img.data[i*4]=250; img.data[i*4+1]=250; img.data[i*4+2]=255; }
+    else { img.data[i*4]=40; img.data[i*4+1]=70; img.data[i*4+2]=210; }
+    img.data[i*4+3]=255;
   }
-  const cScared = makeCanvas(size);
-  let tc = cScared.getContext('2d');
-  drawGhostBody(tc, size, '#2a4bd7');
-  tc.strokeStyle = '#fff'; tc.lineWidth = size*0.05; tc.lineCap='round';
-  tc.beginPath(); tc.moveTo(size*0.32,size*0.62);
-  tc.lineTo(size*0.42,size*0.72); tc.lineTo(size*0.5,size*0.62);
-  tc.lineTo(size*0.58,size*0.72); tc.lineTo(size*0.68,size*0.62);
-  tc.stroke();
-  drawGhostEyes(tc, size, true);
-  texScared = cScared;
-
-  const cFlash = makeCanvas(size);
-  tc = cFlash.getContext('2d');
-  drawGhostBody(tc, size, '#ffffff');
-  tc.strokeStyle = '#ff5f5f'; tc.lineWidth = size*0.05; tc.lineCap='round';
-  tc.beginPath(); tc.moveTo(size*0.32,size*0.62);
-  tc.lineTo(size*0.42,size*0.72); tc.lineTo(size*0.5,size*0.62);
-  tc.lineTo(size*0.58,size*0.72); tc.lineTo(size*0.68,size*0.62);
-  tc.stroke();
-  drawGhostEyes(tc, size, true);
-  texScaredFlash = cFlash;
-
-  const cEyes = makeCanvas(size);
-  tc = cEyes.getContext('2d');
-  drawGhostEyes(tc, size, false);
-  texEaten = cEyes;
+  cctx.putImageData(img,0,0);
+  return c;
 }
 
-function ghostTexture(g){
-  if(g.state==='eaten') return texEaten;
+/* Flat tinted RGB lookup table (no alpha) for the per-pixel floor/ceiling caster. */
+function buildOpaqueTintData(pgm, tint){
+  const { width, height, maxval, data } = pgm;
+  const out = new Uint8ClampedArray(width*height*3);
+  for(let i=0;i<width*height;i++){
+    const lum = maxval>0 ? data[i]/maxval : 0;
+    out[i*3+0] = tint[0]*lum;
+    out[i*3+1] = tint[1]*lum;
+    out[i*3+2] = tint[2]*lum;
+  }
+  return out;
+}
+
+const wallTexA = buildTintedCanvas(pgmWall, [64,116,255], false);
+const wallTexB = buildTintedCanvas(pgmWall, [40,80,210], false);
+const floorTexData = buildOpaqueTintData(pgmFloor, [150,150,158]);
+const ceilTexData = buildOpaqueTintData(pgmCeiling, [40,46,92]);
+
+const texPelletCanvas = buildTintedCanvas(pbmPellet, [255,233,168], true);
+const texPowerCanvas = buildTintedCanvas(pgmPower, [255,220,90], true);
+const texEyesCanvas = buildEyesCanvas(pgmGhostEyes);
+
+const GHOST_COLORS = { chase:[255,59,59], ambush:[255,155,214], random:[59,240,255], shy:[255,166,59] };
+const ghostBodyTex = {};
+for(const key in GHOST_COLORS) ghostBodyTex[key] = buildTintedCanvas(pgmGhostBody, GHOST_COLORS[key], true);
+const ghostBodyScared = buildTintedCanvas(pgmGhostBody, [50,80,230], true);
+const ghostBodyScaredFlash = buildTintedCanvas(pgmGhostBody, [235,235,255], true);
+
+function ghostBodyTexture(g){
   if(g.state==='frightened'){
-    if(frenzyTimer < 2.2 && Math.floor(frenzyTimer*6)%2===0) return texScaredFlash;
-    return texScared;
+    if(frenzyTimer < 2.2 && Math.floor(frenzyTimer*6)%2===0) return ghostBodyScaredFlash;
+    return ghostBodyScared;
   }
-  return ghostTexNormal[g.type];
+  return ghostBodyTex[g.type];
 }
 
 /* ===================== GAME SETUP ===================== */
@@ -479,7 +675,6 @@ function newGame(){
 
   homeCell = findNearestFloor(GW-2, GH-2);
 
-  // power pellet corner targets
   const corners = [
     findNearestFloor(1,1),
     findNearestFloor(GW-2,1),
@@ -543,13 +738,7 @@ document.addEventListener('pointerlockchange', ()=>{
   }
 });
 
-document.addEventListener('mousemove', (e)=>{
-  if(pointerLocked && gameState==='playing'){
-    player.angle += e.movementX * MOUSE_SENS;
-  }
-});
-
-/* ---------- on-screen mobile controls: joystick (move) + drag-to-look ---------- */
+/* ---------- settings: on-screen controls + landscape rotate ---------- */
 const isTouchCapable = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 let touchControlsEnabled = false;
 try{
@@ -557,10 +746,19 @@ try{
   touchControlsEnabled = saved !== null ? saved === '1' : isTouchCapable;
 }catch(e){ touchControlsEnabled = isTouchCapable; }
 
+let landscapeRotated = false;
+try{
+  const savedRot = localStorage.getItem('pac3d_landscapeRotate');
+  landscapeRotated = savedRot === '1';
+}catch(e){ landscapeRotated = false; }
+
 const touchControlsUI = document.getElementById('touchControlsUI');
 const joystickBase = document.getElementById('joystickBase');
 const joystickKnob = document.getElementById('joystickKnob');
+const turnJoystickBase = document.getElementById('turnJoystickBase');
+const turnJoystickKnob = document.getElementById('turnJoystickKnob');
 const touchToggle = document.getElementById('touchToggle');
+const rotateToggle = document.getElementById('rotateToggle');
 const btnPause = document.getElementById('btnPause');
 const btnMapToggle = document.getElementById('btnMapToggle');
 
@@ -575,9 +773,27 @@ touchToggle.addEventListener('change', ()=>{
 });
 applyTouchControlsVisibility();
 
-const joystick = { active:false, id:null, baseX:0, baseY:0, maxR:50, vecX:0, vecY:0 };
-const lookTouch = { active:false, id:null, lastX:0, lastY:0 };
+function applyRotationVisual(){
+  stageEl.classList.toggle('rotated', landscapeRotated);
+  rotateToggle.checked = landscapeRotated;
+  resizeCanvas();
+}
+rotateToggle.addEventListener('change', ()=>{
+  landscapeRotated = rotateToggle.checked;
+  try{ localStorage.setItem('pac3d_landscapeRotate', landscapeRotated?'1':'0'); }catch(e){}
+  applyRotationVisual();
+});
 
+/* When the visual frame is rotated 90°, raw pointer deltas measured in real
+   screen space need to be rotated back into "visual" space before they're
+   used as forward/strafe or turn input. */
+function toVisualDelta(dx,dy){
+  if(!landscapeRotated) return [dx,dy];
+  return [dy, -dx];
+}
+
+/* ---- movement joystick (left) ---- */
+const joystick = { active:false, id:null, baseX:0, baseY:0, maxR:50, vecX:0, vecY:0 };
 function joystickStart(t){
   const rect = joystickBase.getBoundingClientRect();
   joystick.active = true;
@@ -587,82 +803,96 @@ function joystickStart(t){
   joystickUpdate(t);
 }
 function joystickUpdate(t){
-  let dx = t.clientX - joystick.baseX;
-  let dy = t.clientY - joystick.baseY;
+  let [dx,dy] = toVisualDelta(t.clientX - joystick.baseX, t.clientY - joystick.baseY);
   const dist = Math.hypot(dx,dy);
   if(dist > joystick.maxR){ dx = dx/dist*joystick.maxR; dy = dy/dist*joystick.maxR; }
   joystick.vecX = dx / joystick.maxR;
   joystick.vecY = dy / joystick.maxR;
-  joystickKnob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+  const [kx,ky] = landscapeRotated ? [-dy,dx] : [dx,dy];
+  joystickKnob.style.transform = 'translate(' + kx + 'px,' + ky + 'px)';
 }
 function joystickEnd(){
   joystick.active = false; joystick.id = null;
   joystick.vecX = 0; joystick.vecY = 0;
   joystickKnob.style.transform = 'translate(0px,0px)';
 }
-
 joystickBase.addEventListener('touchstart', (e)=>{
   if(joystick.active) return;
   joystickStart(e.changedTouches[0]);
   e.preventDefault();
 }, {passive:false});
+joystickBase.addEventListener('mousedown', (e)=>{
+  if(joystick.active) return;
+  joystick.active = true; joystick.id = 'mouse';
+  const rect = joystickBase.getBoundingClientRect();
+  joystick.baseX = rect.left+rect.width/2; joystick.baseY = rect.top+rect.height/2;
+  joystickUpdate(e);
+  e.preventDefault();
+});
 
-function lookUpdate(t){
-  const dx = t.clientX - lookTouch.lastX;
-  player.angle += dx * 0.0045;
-  lookTouch.lastX = t.clientX; lookTouch.lastY = t.clientY;
+/* ---- turn joystick (right) — replaces "drag anywhere to look" ---- */
+const turnJoystick = { active:false, id:null, baseX:0, baseY:0, maxR:50, vecX:0, vecY:0 };
+function turnJoystickStart(t){
+  const rect = turnJoystickBase.getBoundingClientRect();
+  turnJoystick.active = true;
+  turnJoystick.id = t.identifier;
+  turnJoystick.baseX = rect.left + rect.width/2;
+  turnJoystick.baseY = rect.top + rect.height/2;
+  turnJoystickUpdate(t);
 }
-canvas.addEventListener('touchstart', (e)=>{
-  if(gameState !== 'playing') return;
-  if(lookTouch.active) return;
-  const t = e.changedTouches[0];
-  lookTouch.active = true;
-  lookTouch.id = t.identifier;
-  lookTouch.lastX = t.clientX; lookTouch.lastY = t.clientY;
-}, {passive:true});
+function turnJoystickUpdate(t){
+  let [dx,dy] = toVisualDelta(t.clientX - turnJoystick.baseX, t.clientY - turnJoystick.baseY);
+  const dist = Math.hypot(dx,dy);
+  if(dist > turnJoystick.maxR){ dx = dx/dist*turnJoystick.maxR; dy = dy/dist*turnJoystick.maxR; }
+  turnJoystick.vecX = dx / turnJoystick.maxR;
+  turnJoystick.vecY = dy / turnJoystick.maxR;
+  const [kx,ky] = landscapeRotated ? [-dy,dx] : [dx,dy];
+  turnJoystickKnob.style.transform = 'translate(' + kx + 'px,' + ky + 'px)';
+}
+function turnJoystickEnd(){
+  turnJoystick.active = false; turnJoystick.id = null;
+  turnJoystick.vecX = 0; turnJoystick.vecY = 0;
+  turnJoystickKnob.style.transform = 'translate(0px,0px)';
+}
+turnJoystickBase.addEventListener('touchstart', (e)=>{
+  if(turnJoystick.active) return;
+  turnJoystickStart(e.changedTouches[0]);
+  e.preventDefault();
+}, {passive:false});
+turnJoystickBase.addEventListener('mousedown', (e)=>{
+  if(turnJoystick.active) return;
+  turnJoystick.active = true; turnJoystick.id = 'mouse';
+  const rect = turnJoystickBase.getBoundingClientRect();
+  turnJoystick.baseX = rect.left+rect.width/2; turnJoystick.baseY = rect.top+rect.height/2;
+  turnJoystickUpdate(e);
+  e.preventDefault();
+});
 
 document.addEventListener('touchmove', (e)=>{
   for(const t of e.changedTouches){
     if(joystick.active && t.identifier === joystick.id) joystickUpdate(t);
-    if(lookTouch.active && t.identifier === lookTouch.id) lookUpdate(t);
+    if(turnJoystick.active && t.identifier === turnJoystick.id) turnJoystickUpdate(t);
   }
 }, {passive:true});
 function releaseTouch(e){
   for(const t of e.changedTouches){
     if(joystick.active && t.identifier === joystick.id) joystickEnd();
-    if(lookTouch.active && t.identifier === lookTouch.id){ lookTouch.active=false; lookTouch.id=null; }
+    if(turnJoystick.active && t.identifier === turnJoystick.id) turnJoystickEnd();
   }
 }
 document.addEventListener('touchend', releaseTouch, {passive:true});
 document.addEventListener('touchcancel', releaseTouch, {passive:true});
-
-/* ---- mouse equivalents, so the on-screen joystick/look also work with a mouse
-   (desktop testing, hybrid touch+mouse devices, trackpads, etc.) ---- */
-joystickBase.addEventListener('mousedown', (e)=>{
-  if(joystick.active) return;
-  joystick.active = true;
-  joystick.id = 'mouse';
-  const rect = joystickBase.getBoundingClientRect();
-  joystick.baseX = rect.left + rect.width/2;
-  joystick.baseY = rect.top + rect.height/2;
-  joystickUpdate(e);
-  e.preventDefault();
-});
-canvas.addEventListener('mousedown', (e)=>{
-  if(!touchControlsEnabled) return; // pointer-lock mouse look already covers the non-touch mode
-  if(gameState !== 'playing') return;
-  if(lookTouch.active) return;
-  lookTouch.active = true;
-  lookTouch.id = 'mouse';
-  lookTouch.lastX = e.clientX; lookTouch.lastY = e.clientY;
-});
 document.addEventListener('mousemove', (e)=>{
+  if(pointerLocked && gameState==='playing'){
+    if(landscapeRotated) player.angle += e.movementY * MOUSE_SENS;
+    else player.angle += e.movementX * MOUSE_SENS;
+  }
   if(joystick.active && joystick.id==='mouse') joystickUpdate(e);
-  if(lookTouch.active && lookTouch.id==='mouse') lookUpdate(e);
+  if(turnJoystick.active && turnJoystick.id==='mouse') turnJoystickUpdate(e);
 });
 document.addEventListener('mouseup', ()=>{
   if(joystick.active && joystick.id==='mouse') joystickEnd();
-  if(lookTouch.active && lookTouch.id==='mouse'){ lookTouch.active=false; lookTouch.id=null; }
+  if(turnJoystick.active && turnJoystick.id==='mouse') turnJoystickEnd();
 });
 
 btnPause.addEventListener('click', ()=>{
@@ -712,6 +942,9 @@ function movePlayer(dt){
     if(keys['ArrowLeft']) player.angle -= ROT_SPEED*dt;
     if(keys['ArrowRight']) player.angle += ROT_SPEED*dt;
   }
+  if(touchControlsEnabled && turnJoystick.active){
+    player.angle += turnJoystick.vecX * TURN_JOYSTICK_RATE * dt;
+  }
   const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
   const rightX = Math.cos(player.angle+Math.PI/2), rightY = Math.sin(player.angle+Math.PI/2);
   let mx = dirX*forward + rightX*strafe;
@@ -758,7 +991,6 @@ function chooseNextTarget(g){
     return;
   }
 
-  // chase-mode personalities
   if(g.type==='random' && Math.random() < 0.55){
     const all = getOpenNeighbors(cx,cy);
     const filtered = all.filter(n => !(g.prevCell && n[0]===g.prevCell[0] && n[1]===g.prevCell[1]));
@@ -820,8 +1052,6 @@ function loseLife(){
   lives -= 1;
   sfxDeath();
   invulnTimer = INVULN_DURATION;
-  const start = findNearestFloor(Math.floor(homeCell[0]===1?GW-2:1), 1);
-  // respawn player back at original start-ish corner (opposite of ghost home)
   const respawn = findNearestFloor(1,1);
   player.x = respawn[0]+0.5; player.y = respawn[1]+0.5;
   player.angle = initialAngle(respawn[0], respawn[1]);
@@ -923,24 +1153,56 @@ function updateGame(dt){
   return moving;
 }
 
-/* ===================== RENDER: WALLS ===================== */
+/* ===================== RENDER: FLOOR / CEILING (per-pixel texture cast) ===================== */
+let frameImageData = null;
 function renderFloorCeiling(bobY){
   const w = canvas.width, h = canvas.height;
+  if(!frameImageData || frameImageData.width!==w || frameImageData.height!==h){
+    frameImageData = ctx.createImageData(w,h);
+  }
+  const buf = frameImageData.data;
+  const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
+  const planeLen = Math.tan(FOV/2);
+  const planeX = -dirY*planeLen, planeY = dirX*planeLen;
+  const rayDirX0 = dirX-planeX, rayDirY0 = dirY-planeY;
+  const rayDirX1 = dirX+planeX, rayDirY1 = dirY+planeY;
+  const posZ = 0.5*h;
   const horizon = h/2 + bobY;
-  const gTop = ctx.createLinearGradient(0,0,0,horizon);
-  gTop.addColorStop(0,'#04040c');
-  gTop.addColorStop(1,'#0c1230');
-  ctx.fillStyle = gTop;
-  ctx.fillRect(0,0,w,Math.max(0,horizon));
+  const horizonRow = Math.round(horizon);
 
-  const gBot = ctx.createLinearGradient(0,horizon,0,h);
-  gBot.addColorStop(0,'#0a0a0a');
-  gBot.addColorStop(1,'#28282c');
-  ctx.fillStyle = gBot;
-  ctx.fillRect(0,Math.max(0,horizon),w,h-Math.max(0,horizon));
+  for(let y=0; y<h; y++){
+    const isFloor = y > horizon;
+    const p = isFloor ? (y - horizon) : (horizon - y);
+    if(y === horizonRow || p <= 0.001){
+      for(let x=0;x<w;x++){ const idx=(y*w+x)*4; buf[idx]=8;buf[idx+1]=9;buf[idx+2]=18;buf[idx+3]=255; }
+      continue;
+    }
+    const rowDistance = posZ / p;
+    const stepX = rowDistance*(rayDirX1-rayDirX0)/w;
+    const stepY = rowDistance*(rayDirY1-rayDirY0)/w;
+    let floorX = player.x + rowDistance*rayDirX0;
+    let floorY = player.y + rowDistance*rayDirY0;
+    const tex = isFloor ? floorTexData : ceilTexData;
+    const fog = Math.max(0.12, 1 - rowDistance/15);
+    const rowOff = y*w;
+    for(let x=0;x<w;x++){
+      const cellX = Math.floor(floorX), cellY = Math.floor(floorY);
+      const tx = Math.floor((floorX-cellX)*TEX_SIZE) & (TEX_SIZE-1);
+      const ty = Math.floor((floorY-cellY)*TEX_SIZE) & (TEX_SIZE-1);
+      floorX += stepX; floorY += stepY;
+      const tIdx = (ty*TEX_SIZE+tx)*3;
+      const idx = (rowOff+x)*4;
+      buf[idx]   = tex[tIdx]   * fog;
+      buf[idx+1] = tex[tIdx+1] * fog;
+      buf[idx+2] = tex[tIdx+2] * fog;
+      buf[idx+3] = 255;
+    }
+  }
+  ctx.putImageData(frameImageData,0,0);
 }
 
-function castWalls(){
+/* ===================== RENDER: WALLS (textured, per-column) ===================== */
+function castWalls(bobY){
   const w = canvas.width, h = canvas.height;
   const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
   const planeLen = Math.tan(FOV/2);
@@ -974,31 +1236,38 @@ function castWalls(){
     if(perpDist <= 0.0001) perpDist = 0.0001;
     zbuffer[x] = perpDist;
 
+    let wallX;
+    if(side===0) wallX = player.y + perpDist*rayDirY;
+    else wallX = player.x + perpDist*rayDirX;
+    wallX -= Math.floor(wallX);
+    let texX = Math.floor(wallX*TEX_SIZE);
+    if(side===0 && rayDirX>0) texX = TEX_SIZE-texX-1;
+    if(side===1 && rayDirY<0) texX = TEX_SIZE-texX-1;
+    texX = clamp(texX, 0, TEX_SIZE-1);
+
     const lineHeight = Math.floor(h/perpDist);
-    let drawStart = Math.floor(-lineHeight/2 + h/2);
-    let drawEnd = Math.floor(lineHeight/2 + h/2);
+    const drawStart = Math.floor(-lineHeight/2 + h/2 + bobY);
+    const drawEnd = Math.floor(lineHeight/2 + h/2 + bobY);
     const clipStart = drawStart < 0 ? 0 : drawStart;
-    const clipHeight = (drawEnd < h ? drawEnd : h-1) - clipStart;
+    const clipEndExclusive = drawEnd > h ? h : drawEnd;
+    const clipHeight = clipEndExclusive - clipStart;
     if(clipHeight <= 0) continue;
 
-    const checker = (mapX + mapY) % 2 === 0;
-    const base = checker ? [46,92,224] : [34,72,196];
-    const shade = side===1 ? 0.68 : 1.0;
-    const fog = Math.max(0.12, 1 - perpDist/15);
-    const r = base[0]*shade*fog, g = base[1]*shade*fog, b = base[2]*shade*fog;
-    ctx.fillStyle = 'rgb(' + (r|0) + ',' + (g|0) + ',' + (b|0) + ')';
-    ctx.fillRect(x, clipStart, 1, clipHeight);
+    const variant = (mapX+mapY)%2===0 ? wallTexA : wallTexB;
+    ctx.drawImage(variant, texX,0,1,TEX_SIZE, x, clipStart, 1, clipHeight);
 
-    // subtle brick line accents every other wall cell for depth cue
-    if((mapX+mapY) % 3 === 0){
-      ctx.fillStyle = 'rgba(255,255,255,' + (0.05*fog) + ')';
-      ctx.fillRect(x, clipStart, 1, 2);
+    const fog = clamp(perpDist/15, 0, 0.85);
+    const sideDark = side===1 ? 0.30 : 0;
+    const alpha = clamp(fog*0.9 + sideDark, 0, 0.92);
+    if(alpha > 0.01){
+      ctx.fillStyle = 'rgba(0,0,0,' + alpha + ')';
+      ctx.fillRect(x, clipStart, 1, clipHeight);
     }
   }
 }
 
-/* ===================== RENDER: SPRITES ===================== */
-function renderSprites(){
+/* ===================== RENDER: SPRITES (pellets + ghosts, layered) ===================== */
+function renderSprites(bobY){
   const w = canvas.width, h = canvas.height;
   const dirX = Math.cos(player.angle), dirY = Math.sin(player.angle);
   const planeLen = Math.tan(FOV/2);
@@ -1010,15 +1279,18 @@ function renderSprites(){
     if(p.eaten) continue;
     const ddx = p.x-player.x, ddy = p.y-player.y;
     const d2 = ddx*ddx+ddy*ddy;
-    if(d2 > 144) continue; // cull far pellets
-    let scale = p.power ? (0.5 + Math.sin(performance.now()/180)*0.06) : 0.25;
-    sprites.push({ x:p.x, y:p.y, tex: p.power?texPowerPellet:texPellet, scale, d2 });
+    if(d2 > 144) continue;
+    const scale = p.power ? (0.5 + Math.sin(performance.now()/180)*0.06) : 0.25;
+    sprites.push({ x:p.x, y:p.y, layers:[p.power?texPowerCanvas:texPelletCanvas], scale, d2 });
   }
   for(const g of ghosts){
     const ddx = g.x-player.x, ddy = g.y-player.y;
     const d2 = ddx*ddx+ddy*ddy;
     const scale = g.state==='eaten' ? 0.45 : 0.85;
-    sprites.push({ x:g.x, y:g.y, tex: ghostTexture(g), scale, d2 });
+    const layers = [];
+    if(g.state!=='eaten') layers.push(ghostBodyTexture(g));
+    layers.push(texEyesCanvas);
+    sprites.push({ x:g.x, y:g.y, layers, scale, d2 });
   }
   sprites.sort((a,b)=> b.d2 - a.d2);
 
@@ -1030,20 +1302,22 @@ function renderSprites(){
     const spriteScreenX = Math.floor((w/2)*(1+transformX/transformY));
     const spriteSize = Math.abs(Math.floor(h/transformY*s.scale));
     if(spriteSize <= 0 || spriteSize > 4000) continue;
-    const drawStartY = Math.floor(-spriteSize/2+h/2);
-    const drawEndY = Math.floor(spriteSize/2+h/2);
+    const drawStartY = Math.floor(-spriteSize/2+h/2+bobY);
+    const drawEndY = Math.floor(spriteSize/2+h/2+bobY);
     const drawStartX = Math.floor(-spriteSize/2+spriteScreenX);
     const drawEndX = Math.floor(spriteSize/2+spriteScreenX);
     const spanW = (drawEndX-drawStartX) || 1;
-    const texW = s.tex.width, texH = s.tex.height;
 
     const dsx = drawStartX < 0 ? 0 : drawStartX;
     const dex = drawEndX >= w ? w-1 : drawEndX;
-    for(let stripe = dsx; stripe <= dex; stripe++){
-      if(transformY < zbuffer[stripe]){
-        const texX = Math.floor((stripe-drawStartX)/spanW*texW);
-        if(texX < 0 || texX >= texW) continue;
-        ctx.drawImage(s.tex, texX, 0, 1, texH, stripe, drawStartY, 1, drawEndY-drawStartY);
+    for(const tex of s.layers){
+      const texW = tex.width, texH = tex.height;
+      for(let stripe = dsx; stripe <= dex; stripe++){
+        if(transformY < zbuffer[stripe]){
+          const texX = Math.floor((stripe-drawStartX)/spanW*texW);
+          if(texX < 0 || texX >= texW) continue;
+          ctx.drawImage(tex, texX, 0, 1, texH, stripe, drawStartY, 1, drawEndY-drawStartY);
+        }
       }
     }
   }
@@ -1095,16 +1369,18 @@ function renderMinimap(){
 
 /* ===================== MAIN LOOP ===================== */
 function resizeCanvas(){
-  const maxW = 960;
-  const ratio = window.innerWidth / window.innerHeight;
-  let cw = Math.min(window.innerWidth, maxW);
+  const vw = landscapeRotated ? window.innerHeight : window.innerWidth;
+  const vh = landscapeRotated ? window.innerWidth : window.innerHeight;
+  const maxW = 640;
+  const ratio = vw / vh;
+  let cw = Math.min(vw, maxW);
   let ch = Math.round(cw / ratio);
   canvas.width = cw;
   canvas.height = ch;
   zbuffer = new Array(cw).fill(1e9);
+  frameImageData = null;
 }
 window.addEventListener('resize', resizeCanvas);
-resizeCanvas();
 
 let lastMoving = false;
 function frame(t){
@@ -1115,22 +1391,18 @@ function frame(t){
     lastMoving = updateGame(dt);
   }
 
-  // always render current scene (frozen if paused/ended)
   const bobY = (gameState==='playing' && lastMoving) ? Math.sin(performance.now()/140)*4 : 0;
-  ctx.save();
-  ctx.translate(0, bobY);
   renderFloorCeiling(bobY);
-  castWalls();
-  renderSprites();
-  ctx.restore();
+  castWalls(bobY);
+  renderSprites(bobY);
   renderMinimap();
 
   requestAnimationFrame(frame);
 }
 
 /* ===================== INIT ===================== */
-buildPelletTextures();
-buildGhostTextures();
+applyRotationVisual();
+resizeCanvas();
 newGame();
 gameState = 'start';
 requestAnimationFrame(frame);
