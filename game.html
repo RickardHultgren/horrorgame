@@ -88,17 +88,19 @@
 
   /* ---- on/off switches (touch controls + landscape rotate) ---- */
   #switchesWrap{
-    position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
-    z-index:30; display:flex; align-items:center; gap:10px; flex-wrap:wrap;
-    justify-content:center; pointer-events:none;
+    position:absolute;
+    bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    left:50%; transform:translateX(-50%);
+    z-index:30; display:flex; align-items:center; gap:6px; flex-wrap:nowrap;
+    justify-content:center; pointer-events:none; max-width:98vw;
   }
   .switchPill{
-    display:flex; align-items:center; gap:8px;
-    background:rgba(0,0,10,0.5); border:1px solid rgba(255,225,53,0.35);
-    border-radius:20px; padding:6px 14px; pointer-events:auto;
+    display:flex; align-items:center; gap:6px; flex:none; white-space:nowrap;
+    background:rgba(0,0,10,0.55); border:1px solid rgba(255,225,53,0.35);
+    border-radius:18px; padding:5px 10px; pointer-events:auto;
   }
-  .switchPill span{ color:#ffe135; font-size:12px; letter-spacing:1px; font-weight:700; }
-  .switch{ position:relative; display:inline-block; width:40px; height:22px; flex:none; }
+  .switchPill span{ color:#ffe135; font-size:10.5px; letter-spacing:0.5px; font-weight:700; }
+  .switch{ position:relative; display:inline-block; width:34px; height:19px; flex:none; }
   .switch input{ opacity:0; width:0; height:0; }
   .switch .slider{
     position:absolute; cursor:pointer; inset:0;
@@ -106,11 +108,11 @@
     border:1px solid rgba(255,255,255,0.2);
   }
   .switch .slider::before{
-    content:""; position:absolute; width:16px; height:16px; left:2px; top:2px;
+    content:""; position:absolute; width:13px; height:13px; left:2px; top:2px;
     background:#ddd; border-radius:50%; transition:.15s;
   }
   .switch input:checked + .slider{ background:#2a8f3f; }
-  .switch input:checked + .slider::before{ transform:translateX(18px); background:#fff; }
+  .switch input:checked + .slider::before{ transform:translateX(15px); background:#fff; }
 
   /* ---- on-screen mobile controls: dual joystick ---- */
   #touchControlsUI{ position:absolute; inset:0; z-index:15; pointer-events:none; display:none; }
@@ -164,14 +166,14 @@
         <input type="checkbox" id="touchToggle">
         <span class="slider"></span>
       </label>
-      <span>Screen Controls</span>
+      <span>Controls</span>
     </div>
     <div class="switchPill">
       <label class="switch">
         <input type="checkbox" id="rotateToggle">
         <span class="slider"></span>
       </label>
-      <span>Landscape (90°)</span>
+      <span>Rotate 90°</span>
     </div>
   </div>
 
@@ -416,8 +418,10 @@ function parseNetpbm(text){
   return { magic, width, height, maxval, data };
 }
 
-const NETPBM_WALL = `P2
-# wall brick texture
+/* Four wall textures and four floor textures — the maze is split into four
+   quadrant "zones", each with its own pattern + tint, selected by zoneOf(). */
+const NETPBM_WALL_BRICK = `P2
+# wall brick
 16 16
 255
 45 45 45 45 45 45 45 45 45 45 45 45 45 45 45 45
@@ -438,8 +442,74 @@ const NETPBM_WALL = `P2
 185 182 175 163 45 163 175 182 185 182 175 163 45 163 175 182
 `;
 
-const NETPBM_FLOOR = `P2
-# floor tile texture
+const NETPBM_WALL_BLOCK = `P2
+# wall block
+16 16
+255
+40 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40
+40 169 166 163 160 157 154 151 40 169 166 163 160 157 154 151
+40 167 164 161 158 155 152 149 40 167 164 161 158 155 152 149
+40 165 162 159 156 153 150 147 40 165 162 159 156 153 150 147
+40 163 160 157 154 151 148 145 40 163 160 157 154 151 148 145
+40 161 158 155 152 149 146 143 40 161 158 155 152 149 146 143
+40 159 156 153 150 147 144 141 40 159 156 153 150 147 144 141
+40 157 154 151 148 145 142 139 40 157 154 151 148 145 142 139
+40 40 40 40 40 40 40 40 40 40 40 40 40 40 40 40
+40 169 166 163 160 157 154 151 40 169 166 163 160 157 154 151
+40 167 164 161 158 155 152 149 40 167 164 161 158 155 152 149
+40 165 162 159 156 153 150 147 40 165 162 159 156 153 150 147
+40 163 160 157 154 151 148 145 40 163 160 157 154 151 148 145
+40 161 158 155 152 149 146 143 40 161 158 155 152 149 146 143
+40 159 156 153 150 147 144 141 40 159 156 153 150 147 144 141
+40 157 154 151 148 145 142 139 40 157 154 151 148 145 142 139
+`;
+
+const NETPBM_WALL_PLANK = `P2
+# wall plank
+16 16
+255
+35 139 145 139 35 139 145 139 35 139 145 139 35 139 145 139
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 139 145 139 35 139 145 139 35 139 145 139 35 139 145 139
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 139 145 139 35 139 145 139 35 139 145 139 35 139 145 139
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 154 160 154 35 154 160 154 35 154 160 154 35 154 160 154
+35 139 145 139 35 139 145 139 35 139 145 139 35 139 145 139
+`;
+
+const NETPBM_WALL_DIAMOND = `P2
+# wall diamond
+16 16
+255
+35 35 35 35 35 35 35 35 35 35 35 35 35 35 35 35
+35 35 35 35 145 35 35 35 35 35 35 35 145 35 35 35
+35 35 35 145 160 145 35 35 35 35 35 145 160 145 35 35
+35 35 145 160 175 160 145 35 35 35 145 160 175 160 145 35
+35 145 160 175 190 175 160 145 35 145 160 175 190 175 160 145
+35 35 145 160 175 160 145 35 35 35 145 160 175 160 145 35
+35 35 35 145 160 145 35 35 35 35 35 145 160 145 35 35
+35 35 35 35 145 35 35 35 35 35 35 35 145 35 35 35
+35 35 35 35 35 35 35 35 35 35 35 35 35 35 35 35
+35 35 35 35 145 35 35 35 35 35 35 35 145 35 35 35
+35 35 35 145 160 145 35 35 35 35 35 145 160 145 35 35
+35 35 145 160 175 160 145 35 35 35 145 160 175 160 145 35
+35 145 160 175 190 175 160 145 35 145 160 175 190 175 160 145
+35 35 145 160 175 160 145 35 35 35 145 160 175 160 145 35
+35 35 35 145 160 145 35 35 35 35 35 145 160 145 35 35
+35 35 35 35 145 35 35 35 35 35 35 35 145 35 35 35
+`;
+
+const NETPBM_FLOOR_TILE = `P2
+# floor tile
 16 16
 255
 55 55 55 55 55 55 55 55 55 55 55 55 55 55 55 55
@@ -458,6 +528,72 @@ const NETPBM_FLOOR = `P2
 55 118 128 136 140 136 128 118 55 118 128 136 140 136 128 118
 55 114 122 128 130 128 122 114 55 114 122 128 130 128 122 114
 55 108 114 118 120 118 114 108 55 108 114 118 120 118 114 108
+`;
+
+const NETPBM_FLOOR_STRIPE = `P2
+# floor stripe
+16 16
+255
+90 150 150 150 115 115 115 115 90 150 150 150 115 115 115 115
+150 150 150 115 115 115 115 90 150 150 150 115 115 115 115 90
+150 150 115 115 115 115 90 150 150 150 115 115 115 115 90 150
+150 115 115 115 115 90 150 150 150 115 115 115 115 90 150 150
+115 115 115 115 90 150 150 150 115 115 115 115 90 150 150 150
+115 115 115 90 150 150 150 115 115 115 115 90 150 150 150 115
+115 115 90 150 150 150 115 115 115 115 90 150 150 150 115 115
+115 90 150 150 150 115 115 115 115 90 150 150 150 115 115 115
+90 150 150 150 115 115 115 115 90 150 150 150 115 115 115 115
+150 150 150 115 115 115 115 90 150 150 150 115 115 115 115 90
+150 150 115 115 115 115 90 150 150 150 115 115 115 115 90 150
+150 115 115 115 115 90 150 150 150 115 115 115 115 90 150 150
+115 115 115 115 90 150 150 150 115 115 115 115 90 150 150 150
+115 115 115 90 150 150 150 115 115 115 115 90 150 150 150 115
+115 115 90 150 150 150 115 115 115 115 90 150 150 150 115 115
+115 90 150 150 150 115 115 115 115 90 150 150 150 115 115 115
+`;
+
+const NETPBM_FLOOR_SPECKLE = `P2
+# floor speckle
+16 16
+255
+190 140 140 140 140 190 140 100 140 140 190 140 100 140 140 140
+140 140 140 190 140 140 140 140 190 140 100 140 140 190 140 100
+140 100 140 140 140 140 190 140 140 140 140 190 140 100 140 140
+140 140 190 140 100 140 140 140 140 190 140 140 140 140 190 140
+190 140 100 140 140 190 140 100 140 140 140 140 190 140 140 140
+140 140 140 190 140 100 140 140 190 140 100 140 140 140 140 190
+140 190 140 140 140 140 190 140 100 140 140 190 140 100 140 140
+140 140 140 140 190 140 140 140 140 190 140 100 140 140 190 140
+190 140 100 140 140 140 140 190 140 140 140 140 190 140 100 140
+100 140 140 190 140 100 140 140 140 140 190 140 140 140 140 190
+140 190 140 100 140 140 190 140 100 140 140 140 140 190 140 140
+140 140 140 140 190 140 100 140 140 190 140 100 140 140 140 140
+140 140 190 140 140 140 140 190 140 100 140 140 190 140 100 140
+100 140 140 140 140 190 140 140 140 140 190 140 100 140 140 190
+140 190 140 100 140 140 140 140 190 140 140 140 140 190 140 100
+140 100 140 140 190 140 100 140 140 140 140 190 140 140 140 140
+`;
+
+const NETPBM_FLOOR_CROSS = `P2
+# floor cross
+16 16
+255
+120 120 120 120 120 120 120 120 120 120 120 120 120 120 120 120
+120 120 120 170 170 170 120 120 120 120 120 170 170 170 120 120
+120 120 120 170 170 170 120 120 120 120 120 170 170 170 120 120
+120 170 170 170 170 170 170 170 120 170 170 170 170 170 170 170
+120 170 170 170 170 170 170 170 120 170 170 170 170 170 170 170
+120 170 170 170 170 170 170 170 120 170 170 170 170 170 170 170
+120 120 120 170 170 170 120 120 120 120 120 170 170 170 120 120
+120 120 120 170 170 170 120 120 120 120 120 170 170 170 120 120
+120 120 120 120 120 120 120 120 120 120 120 120 120 120 120 120
+120 120 120 170 170 170 120 120 120 120 120 170 170 170 120 120
+120 120 120 170 170 170 120 120 120 120 120 170 170 170 120 120
+120 170 170 170 170 170 170 170 120 170 170 170 170 170 170 170
+120 170 170 170 170 170 170 170 120 170 170 170 170 170 170 170
+120 170 170 170 170 170 170 170 120 170 170 170 170 170 170 170
+120 120 120 170 170 170 120 120 120 120 120 170 170 170 120 120
+120 120 120 170 170 170 120 120 120 120 120 170 170 170 120 120
 `;
 
 const NETPBM_CEILING = `P2
@@ -482,20 +618,24 @@ const NETPBM_CEILING = `P2
 30 45 48 51 52 51 48 45 30 45 48 51 52 51 48 45
 `;
 
-const NETPBM_PELLET = `P1
+/* Pellet — now the same P2 grayscale convention (0=transparent, 1..maxval=
+   brightness) as every other sprite/texture, instead of a special-cased
+   1-bit bitmap. */
+const NETPBM_PELLET = `P2
 # pellet
 12 12
+255
 0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 1 1 0 0 0 0 0
-0 0 0 1 1 1 1 1 1 0 0 0
-0 0 1 1 1 1 1 1 1 1 0 0
-0 0 1 1 1 1 1 1 1 1 0 0
-0 1 1 1 1 1 1 1 1 1 1 0
-0 1 1 1 1 1 1 1 1 1 1 0
-0 0 1 1 1 1 1 1 1 1 0 0
-0 0 1 1 1 1 1 1 1 1 0 0
-0 0 0 1 1 1 1 1 1 0 0 0
-0 0 0 0 0 1 1 0 0 0 0 0
+0 0 0 0 50 92 92 50 0 0 0 0
+0 0 10 137 233 235 235 233 137 10 0 0
+0 0 137 235 235 235 235 235 235 137 0 0
+0 50 233 235 235 235 235 235 235 233 50 0
+0 92 235 235 235 235 235 235 235 235 92 0
+0 92 235 235 235 235 235 235 235 235 92 0
+0 50 233 235 235 235 235 235 235 233 50 0
+0 0 137 235 235 235 235 235 235 137 0 0
+0 0 10 137 233 235 235 233 137 10 0 0
+0 0 0 0 50 92 92 50 0 0 0 0
 0 0 0 0 0 0 0 0 0 0 0 0
 `;
 
@@ -581,10 +721,20 @@ const NETPBM_GHOST_EYES = `P2
 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
 `;
 
-const pgmWall = parseNetpbm(NETPBM_WALL);
-const pgmFloor = parseNetpbm(NETPBM_FLOOR);
+const pgmWallByZone = [
+  parseNetpbm(NETPBM_WALL_BRICK),
+  parseNetpbm(NETPBM_WALL_BLOCK),
+  parseNetpbm(NETPBM_WALL_PLANK),
+  parseNetpbm(NETPBM_WALL_DIAMOND)
+];
+const pgmFloorByZone = [
+  parseNetpbm(NETPBM_FLOOR_TILE),
+  parseNetpbm(NETPBM_FLOOR_STRIPE),
+  parseNetpbm(NETPBM_FLOOR_SPECKLE),
+  parseNetpbm(NETPBM_FLOOR_CROSS)
+];
 const pgmCeiling = parseNetpbm(NETPBM_CEILING);
-const pbmPellet = parseNetpbm(NETPBM_PELLET);
+const pgmPellet = parseNetpbm(NETPBM_PELLET);
 const pgmPower = parseNetpbm(NETPBM_POWER);
 const pgmGhostBody = parseNetpbm(NETPBM_GHOST_BODY);
 const pgmGhostEyes = parseNetpbm(NETPBM_GHOST_EYES);
@@ -641,12 +791,19 @@ function buildOpaqueTintData(pgm, tint){
   return out;
 }
 
-const wallTexA = buildTintedCanvas(pgmWall, [64,116,255], false);
-const wallTexB = buildTintedCanvas(pgmWall, [40,80,210], false);
-const floorTexData = buildOpaqueTintData(pgmFloor, [150,150,158]);
+/* Four zones (maze quadrants), each with its own wall + floor look. */
+const ZONE_WALL_TINTS = [ [64,116,255], [225,72,72], [70,190,120], [178,96,224] ];
+const ZONE_FLOOR_TINTS = [ [150,155,178], [182,150,150], [150,178,158], [172,152,182] ];
+const wallTexByZone = pgmWallByZone.map((pgm,i)=> buildTintedCanvas(pgm, ZONE_WALL_TINTS[i], false));
+const floorTexByZone = pgmFloorByZone.map((pgm,i)=> buildOpaqueTintData(pgm, ZONE_FLOOR_TINTS[i]));
 const ceilTexData = buildOpaqueTintData(pgmCeiling, [40,46,92]);
 
-const texPelletCanvas = buildTintedCanvas(pbmPellet, [255,233,168], true);
+let halfGW = 0, halfGH = 0;
+function zoneOf(cx, cy){
+  return (cx < halfGW ? 0 : 1) + (cy < halfGH ? 0 : 2);
+}
+
+const texPelletCanvas = buildTintedCanvas(pgmPellet, [255,233,168], true);
 const texPowerCanvas = buildTintedCanvas(pgmPower, [255,220,90], true);
 const texEyesCanvas = buildEyesCanvas(pgmGhostEyes);
 
@@ -668,6 +825,7 @@ function ghostBodyTexture(g){
 function newGame(){
   maze = loadLevel();
   GH = maze.length; GW = maze[0].length;
+  halfGW = GW/2; halfGH = GH/2;
 
   const start = findNearestFloor(1,1);
   player.x = start[0]+0.5; player.y = start[1]+0.5;
@@ -1182,7 +1340,6 @@ function renderFloorCeiling(bobY){
     const stepY = rowDistance*(rayDirY1-rayDirY0)/w;
     let floorX = player.x + rowDistance*rayDirX0;
     let floorY = player.y + rowDistance*rayDirY0;
-    const tex = isFloor ? floorTexData : ceilTexData;
     const fog = Math.max(0.12, 1 - rowDistance/15);
     const rowOff = y*w;
     for(let x=0;x<w;x++){
@@ -1190,6 +1347,9 @@ function renderFloorCeiling(bobY){
       const tx = Math.floor((floorX-cellX)*TEX_SIZE) & (TEX_SIZE-1);
       const ty = Math.floor((floorY-cellY)*TEX_SIZE) & (TEX_SIZE-1);
       floorX += stepX; floorY += stepY;
+      const tex = isFloor
+        ? floorTexByZone[(cellX<halfGW?0:1)+(cellY<halfGH?0:2)]
+        : ceilTexData;
       const tIdx = (ty*TEX_SIZE+tx)*3;
       const idx = (rowOff+x)*4;
       buf[idx]   = tex[tIdx]   * fog;
@@ -1253,7 +1413,7 @@ function castWalls(bobY){
     const clipHeight = clipEndExclusive - clipStart;
     if(clipHeight <= 0) continue;
 
-    const variant = (mapX+mapY)%2===0 ? wallTexA : wallTexB;
+    const variant = wallTexByZone[zoneOf(mapX, mapY)];
     ctx.drawImage(variant, texX,0,1,TEX_SIZE, x, clipStart, 1, clipHeight);
 
     const fog = clamp(perpDist/15, 0, 0.85);
